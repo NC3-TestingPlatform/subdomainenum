@@ -11,15 +11,16 @@ from subdomainenum.models import SourceResult
 def run_amass(
     domain: str,
     *,
-    passive: bool = True,
     timeout: int = 300,
     line_cb: Callable[[str], None] | None = None,
     cmd_cb: Callable[[str], None] | None = None,
 ) -> SourceResult:
     """Run amass for *domain* and return a :class:`~subdomainenum.models.SourceResult`.
 
+    Passive enumeration is amass's default mode since the ``-passive`` flag
+    was deprecated.
+
     :param domain: Target base domain.
-    :param passive: When ``True``, passes ``-passive`` to use only passive APIs.
     :param timeout: Maximum seconds to wait for amass (it can be slow).
     :param line_cb: Optional callback invoked with each output line (for debug mode).
     :param cmd_cb: Optional callback invoked once with the full command string before launch.
@@ -27,8 +28,6 @@ def run_amass(
     """
     result = SourceResult(name="amass")
     cmd = ["amass", "enum", "-d", domain, "-silent"]
-    if passive:
-        cmd.append("-passive")
     try:
         lines = run_tool(cmd, timeout=timeout, line_cb=line_cb, cmd_cb=cmd_cb)
     except RuntimeError as exc:

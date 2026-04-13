@@ -78,21 +78,17 @@ class TestRunSubfinder:
 class TestRunAmass:
     def test_returns_source_result(self) -> None:
         with patch("subdomainenum.checks.active.amass.run_tool", return_value=[]):
-            result = run_amass("example.com", passive=True)
+            result = run_amass("example.com")
         assert isinstance(result, SourceResult)
         assert result.name == "amass"
 
-    def test_passive_flag(self) -> None:
+    def test_command_contains_enum_and_domain(self) -> None:
         with patch("subdomainenum.checks.active.amass.run_tool", return_value=[]) as mock:
-            run_amass("example.com", passive=True)
+            run_amass("example.com")
             cmd = mock.call_args[0][0]
         assert "enum" in cmd
-        assert "-passive" in cmd
-
-    def test_active_flag_absent_in_passive_mode(self) -> None:
-        with patch("subdomainenum.checks.active.amass.run_tool", return_value=[]) as mock:
-            run_amass("example.com", passive=False)
-            cmd = mock.call_args[0][0]
+        assert "example.com" in cmd
+        # -passive is deprecated; amass passive is the default
         assert "-passive" not in cmd
 
     def test_tool_missing(self) -> None:
@@ -100,7 +96,7 @@ class TestRunAmass:
             "subdomainenum.checks.active.amass.run_tool",
             side_effect=RuntimeError("amass not found"),
         ):
-            result = run_amass("example.com", passive=True)
+            result = run_amass("example.com")
         assert result.available is False
 
     def test_cmd_cb_passed_to_run_tool(self) -> None:

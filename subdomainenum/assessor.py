@@ -83,7 +83,7 @@ def _run_passive(
 
     def _run_amass() -> SourceResult:
         _cb("Running amass (passive)…")
-        return run_amass(domain, passive=True, line_cb=_line_cb("amass"), cmd_cb=_cmd_cb("amass"))
+        return run_amass(domain, line_cb=_line_cb("amass"), cmd_cb=_cmd_cb("amass"))
 
     def _run_findomain() -> SourceResult:
         _cb("Running findomain…")
@@ -218,7 +218,7 @@ def _resolve_all(
 def assess(
     domain: str,
     *,
-    mode: EnumMode = EnumMode.PASSIVE,
+    mode: EnumMode = EnumMode.ALL,
     wordlist: str | None = None,
     url: str | None = None,
     timeout: float = 5.0,
