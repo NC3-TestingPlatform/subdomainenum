@@ -27,33 +27,18 @@ services:
       # See: https://github.com/owasp-amass/amass/blob/master/doc/user_guide.md
       # - ${HOME}/.config/amass/datasources.yaml:/root/.config/amass/datasources.yaml:ro
 
+    # Copy .env.example → .env and fill in any keys you want to use.
+    env_file:
+      - path: .env
+        required: false
     environment:
-      # ---------------------------------------------------------------------------
-      # Wordlists (bundled from SecLists – override with host paths via -v mount)
-      # ---------------------------------------------------------------------------
-      - DEFAULT_DNS_WORDLIST=/opt/SecLists/Discovery/DNS/subdomains-top1million-5000.txt
-      - DEFAULT_VHOST_WORDLIST=/opt/SecLists/Discovery/DNS/subdomains-top1million-5000.txt
-
-      # ---------------------------------------------------------------------------
-      # dnsrecon – Shodan integration
-      # Set SHODAN_API_KEY to automatically add --shodan to dnsrecon runs.
-      # Get a key at https://account.shodan.io
-      # ---------------------------------------------------------------------------
+      - DEFAULT_DNS_WORDLIST=${DEFAULT_DNS_WORDLIST:-/opt/SecLists/Discovery/DNS/subdomains-top1million-5000.txt}
+      - DEFAULT_VHOST_WORDLIST=${DEFAULT_VHOST_WORDLIST:-/opt/SecLists/Discovery/DNS/subdomains-top1million-5000.txt}
       - SHODAN_API_KEY=${SHODAN_API_KEY:-}
-
-      # ---------------------------------------------------------------------------
-      # findomain – optional API tokens (each unlocks an additional data source)
-      # Tokens are read directly from the environment by findomain.
-      # ---------------------------------------------------------------------------
-      # VirusTotal  https://www.virustotal.com/gui/my-apikey
       - FINDOMAIN_VIRUSTOTAL_KEY=${FINDOMAIN_VIRUSTOTAL_KEY:-}
-      # SecurityTrails  https://securitytrails.com/app/account/credentials
       - FINDOMAIN_SECURITYTRAILS_KEY=${FINDOMAIN_SECURITYTRAILS_KEY:-}
-      # Facebook Certificate Transparency  https://developers.facebook.com/
       - FINDOMAIN_FACEBOOK_TOKEN=${FINDOMAIN_FACEBOOK_TOKEN:-}
-      # Spyse (now Intruder)  https://app.intruder.io/
       - FINDOMAIN_SPYSE_TOKEN=${FINDOMAIN_SPYSE_TOKEN:-}
-      # CertSpotter  https://sslmate.com/certspotter/api/
       - FINDOMAIN_CERTSPOTTER_TOKEN=${FINDOMAIN_CERTSPOTTER_TOKEN:-}
 
     # Allow raw network access for DNS resolution and tool connectivity
