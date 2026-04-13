@@ -280,19 +280,15 @@ subdomainenum/
 │   ├── reporter.py              Rich terminal output + to_dict() + save_report()
 │   ├── verdict.py               build_verdict() — factual count summary
 │   ├── cli.py                   Typer CLI: check, info sub-commands
-│   └── checks/
-│       ├── passive/
-│       │   └── san.py           TLS SAN extraction (native Python)
-│       │                        (CT log data covered by assetfinder internally)
-│       └── active/
-│           ├── tool_runner.py   subprocess wrapper used by all active tools
-│           ├── subfinder.py     subfinder wrapper
-│           ├── amass.py         amass enum wrapper (passive is amass's default)
-│           ├── findomain.py     findomain wrapper
-│           ├── assetfinder.py   assetfinder wrapper
-│           ├── dnsrecon.py      dnsrecon -t brt wrapper
-│           ├── gobuster_dns.py  gobuster dns wrapper
-│           └── wfuzz.py         wfuzz vhost fuzzing wrapper
+│   └── tools/
+│       ├── tool_runner.py   subprocess wrapper used by all active tools
+│       ├── subfinder.py     subfinder wrapper
+│       ├── amass.py         amass enum wrapper (passive is amass's default)
+│       ├── findomain.py     findomain wrapper
+│       ├── assetfinder.py   assetfinder wrapper
+│       ├── dnsrecon.py      dnsrecon -t brt wrapper
+│       ├── gobuster_dns.py  gobuster dns wrapper
+│       └── wfuzz.py         wfuzz vhost fuzzing wrapper
 ├── tests/
 │   ├── __init__.py
 │   ├── test_models.py
@@ -302,13 +298,9 @@ subdomainenum/
 │   ├── test_assessor.py
 │   ├── test_reporter.py
 │   ├── test_cli.py
-│   └── checks/
-│       ├── passive/
-│       │   ├── test_crt_sh.py
-│       │   └── test_san.py
-│       └── active/
-│           ├── test_tool_runner.py
-│           └── test_wrappers.py
+│   └── tools/
+│       ├── test_tool_runner.py
+│       └── test_wrappers.py
 ├── Dockerfile
 ├── docker-compose.yml
 ├── pyproject.toml

@@ -1,32 +1,30 @@
-"""Wrapper for findomain subdomain enumeration tool."""
+"""Wrapper for assetfinder subdomain enumeration tool."""
 
 from __future__ import annotations
 
 from typing import Callable
 
-from subdomainenum.checks.active.tool_runner import run_tool
+from subdomainenum.tools.tool_runner import run_tool
 from subdomainenum.models import SourceResult
 
 
-def run_findomain(
+def run_assetfinder(
     domain: str,
     *,
     timeout: int = 120,
     line_cb: Callable[[str], None] | None = None,
     cmd_cb: Callable[[str], None] | None = None,
 ) -> SourceResult:
-    """Run findomain for *domain* and return a :class:`~subdomainenum.models.SourceResult`.
-
-    findomain is passive by nature (queries multiple APIs).
+    """Run assetfinder for *domain* and return a :class:`~subdomainenum.models.SourceResult`.
 
     :param domain: Target base domain.
-    :param timeout: Maximum seconds to wait for findomain.
+    :param timeout: Maximum seconds to wait for assetfinder.
     :param line_cb: Optional callback invoked with each output line (for debug mode).
     :param cmd_cb: Optional callback invoked once with the full command string before launch.
     :rtype: SourceResult
     """
-    result = SourceResult(name="findomain")
-    cmd = ["findomain", "--target", domain, "--quiet"]
+    result = SourceResult(name="assetfinder")
+    cmd = ["assetfinder", "--subs-only", domain]
     try:
         lines = run_tool(cmd, timeout=timeout, line_cb=line_cb, cmd_cb=cmd_cb)
     except RuntimeError as exc:

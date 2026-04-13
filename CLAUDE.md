@@ -30,24 +30,19 @@ subdomainenum/
   dns_utils.py        → resolve_ips(), is_alive() via dnspython (never raises)
   reporter.py         → Rich terminal renderers; to_dict(); save_report()
   verdict.py          → VerdictSummary dataclass + make_verdict() (pure, no I/O)
-  checks/
-    passive/
-      # (no passive-only Python modules — CT log data is covered by assetfinder internally)
-    active/
-      tool_runner.py  → run_tool(): subprocess wrapper with timeout + streaming
-      subfinder.py    → run_subfinder()
-      amass.py        → run_amass()
-      findomain.py    → run_findomain()
-      assetfinder.py  → run_assetfinder()
-      dnsrecon.py     → run_dnsrecon()
-      gobuster_dns.py → run_gobuster_dns()
-      wfuzz.py        → run_wfuzz() → list[VhostResult]
+  tools/
+    tool_runner.py  → run_tool(): subprocess wrapper with timeout + streaming
+    subfinder.py    → run_subfinder()
+    amass.py        → run_amass()
+    findomain.py    → run_findomain()
+    assetfinder.py  → run_assetfinder()
+    dnsrecon.py     → run_dnsrecon()
+    gobuster_dns.py → run_gobuster_dns()
+    wfuzz.py        → run_wfuzz() → list[VhostResult]
 tests/
   conftest.py              → shared fixtures
   test_*.py                → pytest, AAA pattern, class-per-feature grouping
-  checks/passive/
-    (empty — no passive-only Python tests)
-  checks/active/
+  tools/
     test_tool_runner.py
     test_wrappers.py
 ```
@@ -65,7 +60,7 @@ tests/
 ### I/O boundaries (mock these in tests)
 | Boundary | Module | What to patch |
 |----------|--------|---------------|
-| Subprocess tools | `checks/active/tool_runner.py` | `subprocess.Popen` |
+| Subprocess tools | `tools/tool_runner.py` | `subprocess.Popen` |
 | DNS resolution | `dns_utils.py` | `dns.resolver.Resolver.resolve` |
 
 ### EnumMode behaviour
@@ -82,16 +77,16 @@ tests/
 - Current test count: **182 tests**
 
 ## Adding a New Passive Source
-1. Create `subdomainenum/checks/passive/<name>.py` with a `query_<name>(domain) → SourceResult` function
+1. Add a `query_<name>(domain) → SourceResult` function directly in `assessor.py` or a new helper module
 2. Import and add it to the passive sources list in `assessor.py`
 3. Wire `debug_cb` if the source is streaming
-4. Write tests in `tests/checks/passive/test_<name>.py`
+4. Write tests in `tests/test_assessor.py` or a dedicated file
 
 ## Adding a New Active Tool
-1. Create `subdomainenum/checks/active/<name>.py` using `run_tool()` from `tool_runner.py`
+1. Create `subdomainenum/tools/<name>.py` using `run_tool()` from `tool_runner.py`
 2. Add an entry to `ACTIVE_TOOLS` in `constants.py` (binary name + install hint)
 3. Import and add it to the active sources in `assessor.py`
-4. Write tests in `tests/checks/active/test_wrappers.py` (or a new file)
+4. Write tests in `tests/tools/test_wrappers.py` (or a new file)
 
 ## Debug Log
 `--debug-log <path>` collects each tool's raw output to a plain-text log file.

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Callable
 
-from subdomainenum.checks.active.tool_runner import run_tool
+from subdomainenum.tools.tool_runner import run_tool
 from subdomainenum.models import SourceResult
 
 

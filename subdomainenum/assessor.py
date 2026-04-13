@@ -13,13 +13,13 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Callable
 
-from subdomainenum.checks.active.amass import run_amass
-from subdomainenum.checks.active.assetfinder import run_assetfinder
-from subdomainenum.checks.active.dnsrecon import run_dnsrecon
-from subdomainenum.checks.active.findomain import run_findomain
-from subdomainenum.checks.active.gobuster_dns import run_gobuster_dns
-from subdomainenum.checks.active.subfinder import run_subfinder
-from subdomainenum.checks.active.wfuzz import run_wfuzz
+from subdomainenum.tools.amass import run_amass
+from subdomainenum.tools.assetfinder import run_assetfinder
+from subdomainenum.tools.dnsrecon import run_dnsrecon
+from subdomainenum.tools.findomain import run_findomain
+from subdomainenum.tools.gobuster_dns import run_gobuster_dns
+from subdomainenum.tools.subfinder import run_subfinder
+from subdomainenum.tools.wfuzz import run_wfuzz
 from subdomainenum.dns_utils import resolve_ips
 from subdomainenum.models import (
     EnumMode,

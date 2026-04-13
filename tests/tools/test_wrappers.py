@@ -7,13 +7,13 @@ from unittest.mock import patch
 
 import pytest
 
-from subdomainenum.checks.active.amass import run_amass
-from subdomainenum.checks.active.assetfinder import run_assetfinder
-from subdomainenum.checks.active.dnsrecon import run_dnsrecon
-from subdomainenum.checks.active.findomain import run_findomain
-from subdomainenum.checks.active.gobuster_dns import run_gobuster_dns
-from subdomainenum.checks.active.subfinder import run_subfinder
-from subdomainenum.checks.active.wfuzz import run_wfuzz
+from subdomainenum.tools.amass import run_amass
+from subdomainenum.tools.assetfinder import run_assetfinder
+from subdomainenum.tools.dnsrecon import run_dnsrecon
+from subdomainenum.tools.findomain import run_findomain
+from subdomainenum.tools.gobuster_dns import run_gobuster_dns
+from subdomainenum.tools.subfinder import run_subfinder
+from subdomainenum.tools.wfuzz import run_wfuzz
 from subdomainenum.models import SourceResult, VhostResult
 
 
@@ -23,7 +23,7 @@ from subdomainenum.models import SourceResult, VhostResult
 
 
 def _mock_run_tool(output: list[str]) -> patch:
-    return patch("subdomainenum.checks.active.tool_runner.run_tool", return_value=output)
+    return patch("subdomainenum.tools.tool_runner.run_tool", return_value=output)
 
 
 # ---------------------------------------------------------------------------
@@ -33,13 +33,13 @@ def _mock_run_tool(output: list[str]) -> patch:
 
 class TestRunSubfinder:
     def test_returns_source_result(self) -> None:
-        with patch("subdomainenum.checks.active.subfinder.run_tool", return_value=["sub.example.com"]):
+        with patch("subdomainenum.tools.subfinder.run_tool", return_value=["sub.example.com"]):
             result = run_subfinder("example.com")
         assert isinstance(result, SourceResult)
         assert result.name == "subfinder"
 
     def test_command_contains_domain_and_silent(self) -> None:
-        with patch("subdomainenum.checks.active.subfinder.run_tool", return_value=[]) as mock:
+        with patch("subdomainenum.tools.subfinder.run_tool", return_value=[]) as mock:
             run_subfinder("example.com")
             cmd = mock.call_args[0][0]
         assert "example.com" in cmd
@@ -48,7 +48,7 @@ class TestRunSubfinder:
 
     def test_tool_missing_sets_available_false(self) -> None:
         with patch(
-            "subdomainenum.checks.active.subfinder.run_tool",
+            "subdomainenum.tools.subfinder.run_tool",
             side_effect=RuntimeError("subfinder not found"),
         ):
             result = run_subfinder("example.com")
@@ -57,7 +57,7 @@ class TestRunSubfinder:
 
     def test_parses_subdomains(self) -> None:
         with patch(
-            "subdomainenum.checks.active.subfinder.run_tool",
+            "subdomainenum.tools.subfinder.run_tool",
             return_value=["a.example.com", "b.example.com"],
         ):
             result = run_subfinder("example.com")
@@ -65,7 +65,7 @@ class TestRunSubfinder:
 
     def test_cmd_cb_passed_to_run_tool(self) -> None:
         cb = lambda cmd: None
-        with patch("subdomainenum.checks.active.subfinder.run_tool", return_value=[]) as mock:
+        with patch("subdomainenum.tools.subfinder.run_tool", return_value=[]) as mock:
             run_subfinder("example.com", cmd_cb=cb)
         assert mock.call_args.kwargs.get("cmd_cb") is cb
 
@@ -77,13 +77,13 @@ class TestRunSubfinder:
 
 class TestRunAmass:
     def test_returns_source_result(self) -> None:
-        with patch("subdomainenum.checks.active.amass.run_tool", return_value=[]):
+        with patch("subdomainenum.tools.amass.run_tool", return_value=[]):
             result = run_amass("example.com")
         assert isinstance(result, SourceResult)
         assert result.name == "amass"
 
     def test_command_contains_enum_and_domain(self) -> None:
-        with patch("subdomainenum.checks.active.amass.run_tool", return_value=[]) as mock:
+        with patch("subdomainenum.tools.amass.run_tool", return_value=[]) as mock:
             run_amass("example.com")
             cmd = mock.call_args[0][0]
         assert "enum" in cmd
@@ -93,7 +93,7 @@ class TestRunAmass:
 
     def test_tool_missing(self) -> None:
         with patch(
-            "subdomainenum.checks.active.amass.run_tool",
+            "subdomainenum.tools.amass.run_tool",
             side_effect=RuntimeError("amass not found"),
         ):
             result = run_amass("example.com")
@@ -101,7 +101,7 @@ class TestRunAmass:
 
     def test_cmd_cb_passed_to_run_tool(self) -> None:
         cb = lambda cmd: None
-        with patch("subdomainenum.checks.active.amass.run_tool", return_value=[]) as mock:
+        with patch("subdomainenum.tools.amass.run_tool", return_value=[]) as mock:
             run_amass("example.com", cmd_cb=cb)
         assert mock.call_args.kwargs.get("cmd_cb") is cb
 
@@ -113,14 +113,14 @@ class TestRunAmass:
 
 class TestRunFindomain:
     def test_returns_source_result(self) -> None:
-        with patch("subdomainenum.checks.active.findomain.run_tool", return_value=[]):
+        with patch("subdomainenum.tools.findomain.run_tool", return_value=[]):
             result = run_findomain("example.com")
         assert isinstance(result, SourceResult)
         assert result.name == "findomain"
 
     def test_tool_missing(self) -> None:
         with patch(
-            "subdomainenum.checks.active.findomain.run_tool",
+            "subdomainenum.tools.findomain.run_tool",
             side_effect=RuntimeError("findomain not found"),
         ):
             result = run_findomain("example.com")
@@ -128,7 +128,7 @@ class TestRunFindomain:
 
     def test_cmd_cb_passed_to_run_tool(self) -> None:
         cb = lambda cmd: None
-        with patch("subdomainenum.checks.active.findomain.run_tool", return_value=[]) as mock:
+        with patch("subdomainenum.tools.findomain.run_tool", return_value=[]) as mock:
             run_findomain("example.com", cmd_cb=cb)
         assert mock.call_args.kwargs.get("cmd_cb") is cb
 
@@ -140,14 +140,14 @@ class TestRunFindomain:
 
 class TestRunAssetfinder:
     def test_returns_source_result(self) -> None:
-        with patch("subdomainenum.checks.active.assetfinder.run_tool", return_value=[]):
+        with patch("subdomainenum.tools.assetfinder.run_tool", return_value=[]):
             result = run_assetfinder("example.com")
         assert isinstance(result, SourceResult)
         assert result.name == "assetfinder"
 
     def test_tool_missing(self) -> None:
         with patch(
-            "subdomainenum.checks.active.assetfinder.run_tool",
+            "subdomainenum.tools.assetfinder.run_tool",
             side_effect=RuntimeError("assetfinder not found"),
         ):
             result = run_assetfinder("example.com")
@@ -155,7 +155,7 @@ class TestRunAssetfinder:
 
     def test_cmd_cb_passed_to_run_tool(self) -> None:
         cb = lambda cmd: None
-        with patch("subdomainenum.checks.active.assetfinder.run_tool", return_value=[]) as mock:
+        with patch("subdomainenum.tools.assetfinder.run_tool", return_value=[]) as mock:
             run_assetfinder("example.com", cmd_cb=cb)
         assert mock.call_args.kwargs.get("cmd_cb") is cb
 
@@ -167,18 +167,18 @@ class TestRunAssetfinder:
 
 class TestRunDnsrecon:
     def test_returns_source_result(self) -> None:
-        with patch("subdomainenum.checks.active.dnsrecon.run_tool", return_value=[]):
+        with patch("subdomainenum.tools.dnsrecon.run_tool", return_value=[]):
             result = run_dnsrecon("example.com", wordlist="/tmp/words.txt")
         assert isinstance(result, SourceResult)
         assert result.name == "dnsrecon"
 
     def test_single_invocation(self) -> None:
-        with patch("subdomainenum.checks.active.dnsrecon.run_tool", return_value=[]) as mock:
+        with patch("subdomainenum.tools.dnsrecon.run_tool", return_value=[]) as mock:
             run_dnsrecon("example.com", wordlist="/tmp/words.txt")
         assert mock.call_count == 1
 
     def test_command_uses_std_and_brt_types(self) -> None:
-        with patch("subdomainenum.checks.active.dnsrecon.run_tool", return_value=[]) as mock:
+        with patch("subdomainenum.tools.dnsrecon.run_tool", return_value=[]) as mock:
             run_dnsrecon("example.com", wordlist="/tmp/words.txt")
             cmd = mock.call_args[0][0]
         type_val = cmd[cmd.index("-t") + 1]
@@ -186,14 +186,14 @@ class TestRunDnsrecon:
         assert "brt" in type_val
 
     def test_command_includes_all_boolean_flags(self) -> None:
-        with patch("subdomainenum.checks.active.dnsrecon.run_tool", return_value=[]) as mock:
+        with patch("subdomainenum.tools.dnsrecon.run_tool", return_value=[]) as mock:
             run_dnsrecon("example.com", wordlist="/tmp/words.txt")
             cmd = mock.call_args[0][0]
         for flag in ("-a", "-s", "-b", "-y", "-k", "-w", "-z"):
             assert flag in cmd, f"expected {flag} in command"
 
     def test_wordlist_in_command(self) -> None:
-        with patch("subdomainenum.checks.active.dnsrecon.run_tool", return_value=[]) as mock:
+        with patch("subdomainenum.tools.dnsrecon.run_tool", return_value=[]) as mock:
             run_dnsrecon("example.com", wordlist="/tmp/subdomains.txt")
             cmd = mock.call_args[0][0]
         assert "-D" in cmd
@@ -201,21 +201,21 @@ class TestRunDnsrecon:
 
     def test_shodan_flag_added_when_api_key_set(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("SHODAN_API_KEY", "testkey123")
-        with patch("subdomainenum.checks.active.dnsrecon.run_tool", return_value=[]) as mock:
+        with patch("subdomainenum.tools.dnsrecon.run_tool", return_value=[]) as mock:
             run_dnsrecon("example.com", wordlist="/tmp/w.txt")
             cmd = mock.call_args[0][0]
         assert "--shodan" in cmd
 
     def test_shodan_flag_absent_when_no_api_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("SHODAN_API_KEY", raising=False)
-        with patch("subdomainenum.checks.active.dnsrecon.run_tool", return_value=[]) as mock:
+        with patch("subdomainenum.tools.dnsrecon.run_tool", return_value=[]) as mock:
             run_dnsrecon("example.com", wordlist="/tmp/w.txt")
             cmd = mock.call_args[0][0]
         assert "--shodan" not in cmd
 
     def test_tool_missing_sets_available_false(self) -> None:
         with patch(
-            "subdomainenum.checks.active.dnsrecon.run_tool",
+            "subdomainenum.tools.dnsrecon.run_tool",
             side_effect=RuntimeError("dnsrecon not found"),
         ):
             result = run_dnsrecon("example.com", wordlist="/tmp/w.txt")
@@ -223,7 +223,7 @@ class TestRunDnsrecon:
 
     def test_parses_output_lines(self) -> None:
         output = ["[*] A sub.example.com 1.2.3.4"]
-        with patch("subdomainenum.checks.active.dnsrecon.run_tool", return_value=output):
+        with patch("subdomainenum.tools.dnsrecon.run_tool", return_value=output):
             result = run_dnsrecon("example.com", wordlist="/tmp/w.txt")
         assert "sub.example.com" in result.subdomains
 
@@ -232,13 +232,13 @@ class TestRunDnsrecon:
             "[*] A dup.example.com 1.1.1.1",
             "[*] AAAA dup.example.com ::1",
         ]
-        with patch("subdomainenum.checks.active.dnsrecon.run_tool", return_value=output):
+        with patch("subdomainenum.tools.dnsrecon.run_tool", return_value=output):
             result = run_dnsrecon("example.com", wordlist="/tmp/w.txt")
         assert result.subdomains.count("dup.example.com") == 1
 
     def test_cmd_cb_passed_to_run_tool(self) -> None:
         cb = lambda cmd: None
-        with patch("subdomainenum.checks.active.dnsrecon.run_tool", return_value=[]) as mock:
+        with patch("subdomainenum.tools.dnsrecon.run_tool", return_value=[]) as mock:
             run_dnsrecon("example.com", wordlist="/tmp/w.txt", cmd_cb=cb)
         assert mock.call_args.kwargs.get("cmd_cb") is cb
 
@@ -250,20 +250,20 @@ class TestRunDnsrecon:
 
 class TestRunGobusterDns:
     def test_returns_source_result(self) -> None:
-        with patch("subdomainenum.checks.active.gobuster_dns.run_tool", return_value=[]):
+        with patch("subdomainenum.tools.gobuster_dns.run_tool", return_value=[]):
             result = run_gobuster_dns("example.com", wordlist="/tmp/words.txt")
         assert isinstance(result, SourceResult)
         assert result.name == "gobuster"
 
     def test_wordlist_in_command(self) -> None:
-        with patch("subdomainenum.checks.active.gobuster_dns.run_tool", return_value=[]) as mock:
+        with patch("subdomainenum.tools.gobuster_dns.run_tool", return_value=[]) as mock:
             run_gobuster_dns("example.com", wordlist="/tmp/dns.txt")
             cmd = mock.call_args[0][0]
         assert "/tmp/dns.txt" in cmd
 
     def test_tool_missing(self) -> None:
         with patch(
-            "subdomainenum.checks.active.gobuster_dns.run_tool",
+            "subdomainenum.tools.gobuster_dns.run_tool",
             side_effect=RuntimeError("gobuster not found"),
         ):
             result = run_gobuster_dns("example.com", wordlist="/tmp/w.txt")
@@ -271,13 +271,13 @@ class TestRunGobusterDns:
 
     def test_parses_found_lines(self) -> None:
         output = ["Found: sub.example.com"]
-        with patch("subdomainenum.checks.active.gobuster_dns.run_tool", return_value=output):
+        with patch("subdomainenum.tools.gobuster_dns.run_tool", return_value=output):
             result = run_gobuster_dns("example.com", wordlist="/tmp/w.txt")
         assert "sub.example.com" in result.subdomains
 
     def test_cmd_cb_passed_to_run_tool(self) -> None:
         cb = lambda cmd: None
-        with patch("subdomainenum.checks.active.gobuster_dns.run_tool", return_value=[]) as mock:
+        with patch("subdomainenum.tools.gobuster_dns.run_tool", return_value=[]) as mock:
             run_gobuster_dns("example.com", wordlist="/tmp/w.txt", cmd_cb=cb)
         assert mock.call_args.kwargs.get("cmd_cb") is cb
 
@@ -293,7 +293,7 @@ class TestRunWfuzz:
             '000000001:   200        42 L      102 W      1024 Ch     "admin"',
             '000000002:   404        5 L       12 W       200 Ch     "nope"',
         ]
-        with patch("subdomainenum.checks.active.wfuzz.run_tool", return_value=raw_output):
+        with patch("subdomainenum.tools.wfuzz.run_tool", return_value=raw_output):
             results = run_wfuzz("example.com", url="http://example.com", wordlist="/tmp/w.txt")
         assert isinstance(results, list)
 
@@ -302,28 +302,28 @@ class TestRunWfuzz:
             '000000001:   200        42 L      102 W      1024 Ch     "admin"',
             '000000002:   404        5 L       12 W       200 Ch     "nope"',
         ]
-        with patch("subdomainenum.checks.active.wfuzz.run_tool", return_value=raw_output):
+        with patch("subdomainenum.tools.wfuzz.run_tool", return_value=raw_output):
             results = run_wfuzz("example.com", url="http://example.com", wordlist="/tmp/w.txt")
         vhosts = [r.vhost for r in results]
         assert not any("nope" in v for v in vhosts)
 
     def test_returns_vhost_result_objects(self) -> None:
         raw_output = ['000000001:   200        42 L      102 W      1024 Ch     "admin"']
-        with patch("subdomainenum.checks.active.wfuzz.run_tool", return_value=raw_output):
+        with patch("subdomainenum.tools.wfuzz.run_tool", return_value=raw_output):
             results = run_wfuzz("example.com", url="http://example.com", wordlist="/tmp/w.txt")
         if results:
             assert isinstance(results[0], VhostResult)
 
     def test_tool_missing_returns_empty_list(self) -> None:
         with patch(
-            "subdomainenum.checks.active.wfuzz.run_tool",
+            "subdomainenum.tools.wfuzz.run_tool",
             side_effect=RuntimeError("wfuzz not found"),
         ):
             results = run_wfuzz("example.com", url="http://example.com", wordlist="/tmp/w.txt")
         assert results == []
 
     def test_wordlist_in_command(self) -> None:
-        with patch("subdomainenum.checks.active.wfuzz.run_tool", return_value=[]) as mock:
+        with patch("subdomainenum.tools.wfuzz.run_tool", return_value=[]) as mock:
             run_wfuzz("example.com", url="http://example.com", wordlist="/tmp/vhosts.txt")
             cmd = mock.call_args[0][0]
         assert "/tmp/vhosts.txt" in cmd
@@ -334,12 +334,12 @@ class TestRunWfuzz:
             "This is a header line with no wfuzz pattern",
             '000000001:   200        42 L      102 W      1024 Ch     "admin"',
         ]
-        with patch("subdomainenum.checks.active.wfuzz.run_tool", return_value=output):
+        with patch("subdomainenum.tools.wfuzz.run_tool", return_value=output):
             results = run_wfuzz("example.com", url="http://example.com", wordlist="/tmp/w.txt")
         assert len(results) == 1
 
     def test_cmd_cb_passed_to_run_tool(self) -> None:
         cb = lambda cmd: None
-        with patch("subdomainenum.checks.active.wfuzz.run_tool", return_value=[]) as mock:
+        with patch("subdomainenum.tools.wfuzz.run_tool", return_value=[]) as mock:
             run_wfuzz("example.com", url="http://example.com", wordlist="/tmp/w.txt", cmd_cb=cb)
         assert mock.call_args.kwargs.get("cmd_cb") is cb

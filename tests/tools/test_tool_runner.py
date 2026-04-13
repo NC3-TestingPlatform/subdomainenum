@@ -1,4 +1,4 @@
-"""Tests for subdomainenum.checks.active.tool_runner – subprocess wrapper."""
+"""Tests for subdomainenum.tools.tool_runner – subprocess wrapper."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from subdomainenum.checks.active.tool_runner import run_tool
+from subdomainenum.tools.tool_runner import run_tool
 
 
 def _make_popen(stdout_text: str, returncode: int = 0) -> MagicMock:
