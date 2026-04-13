@@ -96,23 +96,26 @@ class TestCheckCommand:
 
 class TestDebugLogMode:
     def test_debug_log_writes_file(self, tmp_path) -> None:
-        """--debug-log saves tool output to the specified file."""
-        log_file = tmp_path / "debug.log"
-        with patch("subdomainenum.cli.assess", return_value=_make_report()):
-            result = runner.invoke(app, ["check", "example.com", "--mode", "passive", "--debug-log", str(log_file)])
+        """--debug-log saves tool output to the auto-generated file."""
+        log_file = tmp_path / "example.com_20260413_120000.log"
+        with patch("subdomainenum.cli._auto_log_path", return_value=log_file):
+            with patch("subdomainenum.cli.assess", return_value=_make_report()):
+                result = runner.invoke(app, ["check", "example.com", "--mode", "passive", "--debug-log"])
         assert result.exit_code == 0
         assert log_file.exists()
 
     def test_debug_log_file_contains_domain(self, tmp_path) -> None:
         """Log file header includes the target domain."""
-        log_file = tmp_path / "debug.log"
-        with patch("subdomainenum.cli.assess", return_value=_make_report()):
-            runner.invoke(app, ["check", "example.com", "--mode", "passive", "--debug-log", str(log_file)])
+        log_file = tmp_path / "example.com_20260413_120000.log"
+        with patch("subdomainenum.cli._auto_log_path", return_value=log_file):
+            with patch("subdomainenum.cli.assess", return_value=_make_report()):
+                runner.invoke(app, ["check", "example.com", "--mode", "passive", "--debug-log"])
         assert "example.com" in log_file.read_text()
 
-    def test_debug_log_passes_callbacks_to_assess(self) -> None:
+    def test_debug_log_passes_callbacks_to_assess(self, tmp_path) -> None:
         """When --debug-log is set, assess() receives debug_cb, cmd_cb, finish_cb."""
         captured: dict = {}
+        log_file = tmp_path / "example.com_20260413_120000.log"
 
         def fake_assess(domain, **kwargs):
             captured["debug_cb"] = kwargs.get("debug_cb")
@@ -120,8 +123,9 @@ class TestDebugLogMode:
             captured["finish_cb"] = kwargs.get("finish_cb")
             return _make_report()
 
-        with patch("subdomainenum.cli.assess", side_effect=fake_assess):
-            runner.invoke(app, ["check", "example.com", "--mode", "passive", "--debug-log", "/tmp/test_debug.log"])
+        with patch("subdomainenum.cli._auto_log_path", return_value=log_file):
+            with patch("subdomainenum.cli.assess", side_effect=fake_assess):
+                runner.invoke(app, ["check", "example.com", "--mode", "passive", "--debug-log"])
 
         assert captured.get("debug_cb") is not None
         assert captured.get("cmd_cb") is not None
@@ -142,32 +146,34 @@ class TestDebugLogMode:
 
     def test_debug_log_stderr_message(self, tmp_path) -> None:
         """After scan, a 'Debug log →' message is printed to stderr."""
-        log_file = tmp_path / "debug.log"
-        with patch("subdomainenum.cli.assess", return_value=_make_report()):
-            result = runner.invoke(app, ["check", "example.com", "--mode", "passive", "--debug-log", str(log_file)])
-        # CliRunner mixes stdout+stderr by default; message should appear somewhere
-        assert str(log_file) in result.output or result.exit_code == 0
+        log_file = tmp_path / "example.com_20260413_120000.log"
+        with patch("subdomainenum.cli._auto_log_path", return_value=log_file):
+            with patch("subdomainenum.cli.assess", return_value=_make_report()):
+                result = runner.invoke(app, ["check", "example.com", "--mode", "passive", "--debug-log"])
+        assert "Debug log" in result.output or result.exit_code == 0
 
     def test_debug_log_with_json_flag(self, tmp_path) -> None:
         """--debug-log + --json should produce valid JSON on stdout and write log file."""
-        log_file = tmp_path / "debug.log"
-        with patch("subdomainenum.cli.assess", return_value=_make_report()):
-            result = runner.invoke(app, ["check", "example.com", "--mode", "passive", "--json", "--debug-log", str(log_file)])
+        log_file = tmp_path / "example.com_20260413_120000.log"
+        with patch("subdomainenum.cli._auto_log_path", return_value=log_file):
+            with patch("subdomainenum.cli.assess", return_value=_make_report()):
+                result = runner.invoke(app, ["check", "example.com", "--mode", "passive", "--json", "--debug-log"])
         assert result.exit_code == 0
         data = json.loads(result.stdout)
         assert data["domain"] == "example.com"
         assert log_file.exists()
 
     def test_debug_log_on_assess_error(self, tmp_path) -> None:
-        """When assess() raises, exit is non-zero (log file may or may not exist)."""
-        log_file = tmp_path / "debug.log"
-        with patch("subdomainenum.cli.assess", side_effect=RuntimeError("boom")):
-            result = runner.invoke(app, ["check", "example.com", "--mode", "passive", "--debug-log", str(log_file)])
+        """When assess() raises, exit is non-zero (log file is not written)."""
+        log_file = tmp_path / "example.com_20260413_120000.log"
+        with patch("subdomainenum.cli._auto_log_path", return_value=log_file):
+            with patch("subdomainenum.cli.assess", side_effect=RuntimeError("boom")):
+                result = runner.invoke(app, ["check", "example.com", "--mode", "passive", "--debug-log"])
         assert result.exit_code != 0
 
     def test_debug_log_callbacks_receive_output(self, tmp_path) -> None:
         """Lines emitted via debug_cb appear in the saved log file."""
-        log_file = tmp_path / "debug.log"
+        log_file = tmp_path / "example.com_20260413_120000.log"
 
         def fake_assess(domain, **kwargs):
             cb = kwargs.get("debug_cb")
@@ -182,13 +188,53 @@ class TestDebugLogMode:
                 finish_cb("subfinder", None)
             return _make_report()
 
-        with patch("subdomainenum.cli.assess", side_effect=fake_assess):
-            runner.invoke(app, ["check", "example.com", "--mode", "passive", "--debug-log", str(log_file)])
+        with patch("subdomainenum.cli._auto_log_path", return_value=log_file):
+            with patch("subdomainenum.cli.assess", side_effect=fake_assess):
+                runner.invoke(app, ["check", "example.com", "--mode", "passive", "--debug-log"])
 
         content = log_file.read_text()
         assert "subfinder" in content
         assert "sub.example.com" in content
         assert "mail.example.com" in content
+
+
+class TestAutoLogPath:
+    def test_uses_reports_dir_when_mounted(self) -> None:
+        """Returns /reports/<domain>_<ts>.log when /reports/ is a directory."""
+        from subdomainenum.cli import _auto_log_path
+
+        with patch("pathlib.Path.is_dir", return_value=True):
+            result = _auto_log_path("example.com")
+        assert str(result).startswith("/reports/")
+        assert "example.com" in result.name
+        assert result.suffix == ".log"
+
+    def test_uses_cwd_when_reports_dir_absent(self) -> None:
+        """Returns ./<domain>_<ts>.log when /reports/ is not a directory."""
+        from subdomainenum.cli import _auto_log_path
+
+        with patch("pathlib.Path.is_dir", return_value=False):
+            result = _auto_log_path("nc3.lu")
+        assert not str(result).startswith("/reports")
+        assert "nc3.lu" in result.name
+        assert result.suffix == ".log"
+
+    def test_filename_contains_timestamp(self) -> None:
+        """Generated filename includes a YYYYMMDD_HHMMSS timestamp."""
+        import re as _re
+        from subdomainenum.cli import _auto_log_path
+
+        with patch("pathlib.Path.is_dir", return_value=False):
+            result = _auto_log_path("test.com")
+        assert _re.search(r"\d{8}_\d{6}", result.name)
+
+    def test_filename_starts_with_domain(self) -> None:
+        """The domain appears at the start of the generated filename."""
+        from subdomainenum.cli import _auto_log_path
+
+        with patch("pathlib.Path.is_dir", return_value=False):
+            result = _auto_log_path("mysite.org")
+        assert result.name.startswith("mysite.org_")
 
 
 class TestProgressCb:

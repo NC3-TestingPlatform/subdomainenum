@@ -13,7 +13,7 @@ $ subdomainenum check example.com
 ```
 
 ![Python](https://img.shields.io/badge/python-%3E%3D3.11-blue)
-![Tests](https://img.shields.io/badge/tests-182%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-186%20passing-brightgreen)
 ![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)
 ![License](https://img.shields.io/badge/license-GPLv3-lightgrey)
 
@@ -143,17 +143,18 @@ subdomainenum check example.com --json --output report.json
 ### Debug log
 
 ```bash
-# Save each tool's raw output to a log file
-subdomainenum check example.com --debug-log /tmp/debug.log
+# Save each tool's raw output to an auto-named log file
+subdomainenum check example.com --debug-log
 
 # Also works with --json
-subdomainenum check example.com --json --debug-log /tmp/debug.log
+subdomainenum check example.com --json --debug-log
 ```
 
 When `--debug-log` is specified, every line emitted by each tool is written to
-the given file as structured plain text (one section per source, with the
-command, all output lines, status, and any error). No debug output is sent to
-stderr — a brief `Debug log → <path>` confirmation appears at the end.
+a file named `<domain>_YYYYMMDD_HHMMSS.log`. The file is placed in `/reports/`
+when that volume is mounted (Docker), otherwise in the current directory. No
+debug output is sent to stderr — a brief `Debug log → <path>` confirmation
+appears at the end.
 
 ### DNS timeout
 
@@ -329,7 +330,7 @@ pytest tests/test_assessor.py -v
 pytest tests/test_cli.py::TestCheckCommand -v
 ```
 
-The test suite has **182 tests** and achieves **100% coverage** across all modules.
+The test suite has **186 tests** and achieves **100% coverage** across all modules.
 
 All DNS I/O (`dns.resolver.Resolver.resolve`), TLS
 sockets, and subprocess calls are mocked at the boundary — no test touches a real

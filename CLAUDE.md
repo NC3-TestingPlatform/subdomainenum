@@ -74,7 +74,7 @@ tests/
 - Test class naming: `TestRunTool`, `TestQueryCrtSh`, `TestAssess`, etc. (class-per-feature)
 - AAA pattern: Arrange → Act → Assert in every test method
 - Coverage target: ≥ 80% (configured in `pyproject.toml`)
-- Current test count: **182 tests**
+- Current test count: **186 tests**
 
 ## Adding a New Passive Source
 1. Add a `query_<name>(domain) → SourceResult` function directly in `assessor.py` or a new helper module
@@ -89,7 +89,10 @@ tests/
 4. Write tests in `tests/tools/test_wrappers.py` (or a new file)
 
 ## Debug Log
-`--debug-log <path>` collects each tool's raw output to a plain-text log file.
+`--debug-log` (boolean flag, no argument) collects each tool's raw output to an
+auto-named log file: `<domain>_YYYYMMDD_HHMMSS.log`.  When `/reports/` is a
+mounted directory (Docker), the file is written there so it survives
+`docker compose run --rm`; otherwise it lands in the current directory.
 `DebugLogger` in `debug_logger.py` is the thread-safe collector; it receives
 `debug_cb`, `cmd_cb`, and `finish_cb` callbacks from `assess()` and writes one
 section per source (command, all output lines, status, optional error).

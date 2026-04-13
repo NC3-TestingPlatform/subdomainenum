@@ -10,12 +10,13 @@ Usage example::
     subdomainenum check example.com
     subdomainenum check example.com --mode active --wordlist /opt/seclists/Discovery/DNS/subdomains-top1million-5000.txt
     subdomainenum check example.com --mode all --url http://10.0.0.1 --json
-    subdomainenum check example.com --debug-log /tmp/debug.log
+    subdomainenum check example.com --debug-log
     subdomainenum info
 """
 
 from __future__ import annotations
 
+import datetime
 import json
 import re
 from pathlib import Path
@@ -49,6 +50,24 @@ _DOMAIN_RE = re.compile(
     r"(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)"
     r"+[a-zA-Z]{2,63}$"
 )
+
+
+def _auto_log_path(domain: str) -> Path:
+    """Return an auto-generated log file path for *domain*.
+
+    If ``/reports`` is a mounted directory (Docker volume), the file is placed
+    there so it survives ``docker compose run --rm``.  Otherwise the file lands
+    in the current working directory.
+
+    :param domain: The enumeration target (used as a filename prefix).
+    :returns: Absolute or relative :class:`~pathlib.Path` for the log file.
+    """
+    ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"{domain}_{ts}.log"
+    reports_dir = Path("/reports")
+    if reports_dir.is_dir():
+        return reports_dir / filename
+    return Path(filename)
 
 
 def _validate_domain(value: str) -> str:
@@ -113,12 +132,16 @@ def check(
         typer.Option("--timeout", help="DNS resolution timeout per query in seconds."),
     ] = 5.0,
     debug_log: Annotated[
-        Optional[str],
+        bool,
         typer.Option(
             "--debug-log",
-            help="Save each tool's raw output to a log file (e.g. /tmp/debug.log).",
+            help=(
+                "Save each tool's raw output to an auto-named log file. "
+                "Written to /reports/<domain>_<timestamp>.log when that volume is mounted, "
+                "otherwise to ./<domain>_<timestamp>.log."
+            ),
         ),
-    ] = None,
+    ] = False,
 ) -> None:
     """Run subdomain enumeration for DOMAIN and display the results."""
     domain = _validate_domain(domain)
@@ -160,9 +183,10 @@ def check(
                 _err.print(f"[red]Error:[/red] {exc}")
             raise typer.Exit(code=1)
 
-    if logger is not None and debug_log:
-        logger.save_to_file(debug_log, domain=domain)
-        _err.print(f"[dim]Debug log →[/dim] {debug_log}")
+    if logger is not None:
+        log_path = _auto_log_path(domain)
+        logger.save_to_file(str(log_path), domain=domain)
+        _err.print(f"[dim]Debug log →[/dim] {log_path}")
 
     if json_output:
         _print_json(report)
