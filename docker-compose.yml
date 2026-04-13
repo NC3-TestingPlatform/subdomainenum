@@ -16,10 +16,45 @@ services:
       # Persist JSON reports on the host
       - ./reports:/reports
 
+      # subfinder – API provider keys (optional).
+      # Create ~/.config/subfinder/provider-config.yaml on the host and
+      # uncomment the line below to pass it into the container.
+      # See: https://github.com/projectdiscovery/subfinder#post-installation-instructions
+      # - ${HOME}/.config/subfinder/provider-config.yaml:/root/.config/subfinder/provider-config.yaml:ro
+
+      # amass – data source credentials (optional).
+      # Create ~/.config/amass/datasources.yaml on the host and uncomment.
+      # See: https://github.com/owasp-amass/amass/blob/master/doc/user_guide.md
+      # - ${HOME}/.config/amass/datasources.yaml:/root/.config/amass/datasources.yaml:ro
+
     environment:
-      # Default wordlists bundled from SecLists – override with your own
+      # ---------------------------------------------------------------------------
+      # Wordlists (bundled from SecLists – override with host paths via -v mount)
+      # ---------------------------------------------------------------------------
       - DEFAULT_DNS_WORDLIST=/opt/SecLists/Discovery/DNS/subdomains-top1million-5000.txt
       - DEFAULT_VHOST_WORDLIST=/opt/SecLists/Discovery/DNS/subdomains-top1million-5000.txt
+
+      # ---------------------------------------------------------------------------
+      # dnsrecon – Shodan integration
+      # Set SHODAN_API_KEY to automatically add --shodan to dnsrecon runs.
+      # Get a key at https://account.shodan.io
+      # ---------------------------------------------------------------------------
+      - SHODAN_API_KEY=${SHODAN_API_KEY:-}
+
+      # ---------------------------------------------------------------------------
+      # findomain – optional API tokens (each unlocks an additional data source)
+      # Tokens are read directly from the environment by findomain.
+      # ---------------------------------------------------------------------------
+      # VirusTotal  https://www.virustotal.com/gui/my-apikey
+      - FINDOMAIN_VIRUSTOTAL_KEY=${FINDOMAIN_VIRUSTOTAL_KEY:-}
+      # SecurityTrails  https://securitytrails.com/app/account/credentials
+      - FINDOMAIN_SECURITYTRAILS_KEY=${FINDOMAIN_SECURITYTRAILS_KEY:-}
+      # Facebook Certificate Transparency  https://developers.facebook.com/
+      - FINDOMAIN_FACEBOOK_TOKEN=${FINDOMAIN_FACEBOOK_TOKEN:-}
+      # Spyse (now Intruder)  https://app.intruder.io/
+      - FINDOMAIN_SPYSE_TOKEN=${FINDOMAIN_SPYSE_TOKEN:-}
+      # CertSpotter  https://sslmate.com/certspotter/api/
+      - FINDOMAIN_CERTSPOTTER_TOKEN=${FINDOMAIN_CERTSPOTTER_TOKEN:-}
 
     # Allow raw network access for DNS resolution and tool connectivity
     network_mode: host
