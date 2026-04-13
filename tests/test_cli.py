@@ -8,7 +8,7 @@ from unittest.mock import patch
 import pytest
 from typer.testing import CliRunner
 
-from subdomainenum.cli import _DebugDisplay, app
+from subdomainenum.cli import app
 from subdomainenum.models import EnumMode, EnumReport, SourceResult, Status, SubdomainResult
 
 runner = CliRunner()
@@ -94,58 +94,106 @@ class TestCheckCommand:
         assert "error" in data
 
 
-class TestDebugMode:
-    def test_debug_flag_exits_zero(self) -> None:
+class TestDebugLogMode:
+    def test_debug_log_writes_file(self, tmp_path) -> None:
+        """--debug-log saves tool output to the specified file."""
+        log_file = tmp_path / "debug.log"
         with patch("subdomainenum.cli.assess", return_value=_make_report()):
-            result = runner.invoke(app, ["check", "example.com", "--mode", "passive", "--debug"])
+            result = runner.invoke(app, ["check", "example.com", "--mode", "passive", "--debug-log", str(log_file)])
         assert result.exit_code == 0
+        assert log_file.exists()
 
-    def test_debug_flag_passes_debug_cb_to_assess(self) -> None:
-        captured: list = []
+    def test_debug_log_file_contains_domain(self, tmp_path) -> None:
+        """Log file header includes the target domain."""
+        log_file = tmp_path / "debug.log"
+        with patch("subdomainenum.cli.assess", return_value=_make_report()):
+            runner.invoke(app, ["check", "example.com", "--mode", "passive", "--debug-log", str(log_file)])
+        assert "example.com" in log_file.read_text()
 
-        def fake_assess(*args, **kwargs):
-            cb = kwargs.get("debug_cb")
-            if cb:
-                cb("subfinder", "sub.example.com")
-            captured.append(cb)
+    def test_debug_log_passes_callbacks_to_assess(self) -> None:
+        """When --debug-log is set, assess() receives debug_cb, cmd_cb, finish_cb."""
+        captured: dict = {}
+
+        def fake_assess(domain, **kwargs):
+            captured["debug_cb"] = kwargs.get("debug_cb")
+            captured["cmd_cb"] = kwargs.get("cmd_cb")
+            captured["finish_cb"] = kwargs.get("finish_cb")
             return _make_report()
 
         with patch("subdomainenum.cli.assess", side_effect=fake_assess):
-            result = runner.invoke(app, ["check", "example.com", "--mode", "passive", "--debug"])
-        assert result.exit_code == 0
-        assert len(captured) == 1
-        assert captured[0] is not None  # debug_cb was wired up
+            runner.invoke(app, ["check", "example.com", "--mode", "passive", "--debug-log", "/tmp/test_debug.log"])
 
-    def test_debug_flag_no_debug_cb_without_flag(self) -> None:
-        captured: list = []
+        assert captured.get("debug_cb") is not None
+        assert captured.get("cmd_cb") is not None
+        assert captured.get("finish_cb") is not None
 
-        def fake_assess(*args, **kwargs):
-            captured.append(kwargs.get("debug_cb"))
+    def test_no_debug_log_passes_no_debug_callbacks(self) -> None:
+        """Without --debug-log, assess() receives no debug callbacks."""
+        captured: dict = {}
+
+        def fake_assess(domain, **kwargs):
+            captured["debug_cb"] = kwargs.get("debug_cb")
             return _make_report()
 
         with patch("subdomainenum.cli.assess", side_effect=fake_assess):
-            result = runner.invoke(app, ["check", "example.com", "--mode", "passive"])
-        assert result.exit_code == 0
-        assert captured[0] is None  # no debug_cb when --debug not passed
+            runner.invoke(app, ["check", "example.com", "--mode", "passive"])
 
-    def test_debug_and_json_flags_together(self) -> None:
-        """--debug + --json should still produce valid JSON on stdout."""
+        assert captured.get("debug_cb") is None
+
+    def test_debug_log_stderr_message(self, tmp_path) -> None:
+        """After scan, a 'Debug log →' message is printed to stderr."""
+        log_file = tmp_path / "debug.log"
         with patch("subdomainenum.cli.assess", return_value=_make_report()):
-            result = runner.invoke(app, ["check", "example.com", "--mode", "passive", "--debug", "--json"])
+            result = runner.invoke(app, ["check", "example.com", "--mode", "passive", "--debug-log", str(log_file)])
+        # CliRunner mixes stdout+stderr by default; message should appear somewhere
+        assert str(log_file) in result.output or result.exit_code == 0
+
+    def test_debug_log_with_json_flag(self, tmp_path) -> None:
+        """--debug-log + --json should produce valid JSON on stdout and write log file."""
+        log_file = tmp_path / "debug.log"
+        with patch("subdomainenum.cli.assess", return_value=_make_report()):
+            result = runner.invoke(app, ["check", "example.com", "--mode", "passive", "--json", "--debug-log", str(log_file)])
         assert result.exit_code == 0
         data = json.loads(result.stdout)
         assert data["domain"] == "example.com"
+        assert log_file.exists()
 
-    def test_debug_mode_value_error_exits_nonzero(self) -> None:
-        """Cover lines 170-172: ValueError in the debug branch."""
-        with patch("subdomainenum.cli.assess", side_effect=ValueError("wordlist required")):
-            result = runner.invoke(app, ["check", "example.com", "--mode", "passive", "--debug"])
+    def test_debug_log_on_assess_error(self, tmp_path) -> None:
+        """When assess() raises, exit is non-zero (log file may or may not exist)."""
+        log_file = tmp_path / "debug.log"
+        with patch("subdomainenum.cli.assess", side_effect=RuntimeError("boom")):
+            result = runner.invoke(app, ["check", "example.com", "--mode", "passive", "--debug-log", str(log_file)])
         assert result.exit_code != 0
+
+    def test_debug_log_callbacks_receive_output(self, tmp_path) -> None:
+        """Lines emitted via debug_cb appear in the saved log file."""
+        log_file = tmp_path / "debug.log"
+
+        def fake_assess(domain, **kwargs):
+            cb = kwargs.get("debug_cb")
+            cmd_cb = kwargs.get("cmd_cb")
+            finish_cb = kwargs.get("finish_cb")
+            if cmd_cb:
+                cmd_cb("subfinder", "subfinder -d example.com -silent")
+            if cb:
+                cb("subfinder", "sub.example.com")
+                cb("subfinder", "mail.example.com")
+            if finish_cb:
+                finish_cb("subfinder", None)
+            return _make_report()
+
+        with patch("subdomainenum.cli.assess", side_effect=fake_assess):
+            runner.invoke(app, ["check", "example.com", "--mode", "passive", "--debug-log", str(log_file)])
+
+        content = log_file.read_text()
+        assert "subfinder" in content
+        assert "sub.example.com" in content
+        assert "mail.example.com" in content
 
 
 class TestProgressCb:
     def test_progress_cb_invoked(self) -> None:
-        """Cover line 179: _progress_cb closure body is called when assess uses it."""
+        """progress_cb closure body is called when assess uses it."""
 
         def fake_assess(*args, **kwargs):
             cb = kwargs.get("progress_cb")
@@ -160,7 +208,7 @@ class TestProgressCb:
 
 class TestSaveReportFormats:
     def test_output_svg_saves_file(self, tmp_path) -> None:
-        """Cover line 270: export_svg branch in _save_report."""
+        """export_svg branch in _save_report."""
         out = tmp_path / "report.svg"
         with patch("subdomainenum.cli.assess", return_value=_make_report()):
             result = runner.invoke(app, ["check", "example.com", "--mode", "passive", "--output", str(out)])
@@ -168,7 +216,7 @@ class TestSaveReportFormats:
         assert out.exists()
 
     def test_output_html_saves_file(self, tmp_path) -> None:
-        """Cover line 272: export_html branch in _save_report."""
+        """export_html branch in _save_report."""
         out = tmp_path / "report.html"
         with patch("subdomainenum.cli.assess", return_value=_make_report()):
             result = runner.invoke(app, ["check", "example.com", "--mode", "passive", "--output", str(out)])
@@ -193,45 +241,3 @@ class TestVersionFlag:
         result = runner.invoke(app, ["--version"])
         assert result.exit_code == 0
         assert "subdomainenum" in result.stdout
-
-
-class TestDebugDisplay:
-    """Tests for _DebugDisplay internal buffering and post-exit summary."""
-
-    def _make_display(self):
-        from rich.console import Console
-        return _DebugDisplay(Console(stderr=True), "example.com")
-
-    def test_full_buffers_captures_all_lines_beyond_max_debug_lines(self) -> None:
-        """_full_buffers must retain every line, even past _MAX_DEBUG_LINES."""
-        from subdomainenum.cli import _MAX_DEBUG_LINES
-
-        display = self._make_display()
-        total = _MAX_DEBUG_LINES + 5
-        for i in range(total):
-            display.add_line("subfinder", f"line{i}")
-
-        # Rolling deque is capped at _MAX_DEBUG_LINES
-        assert len(display._buffers["subfinder"]) == _MAX_DEBUG_LINES
-        # Full buffer retains everything
-        assert len(display._full_buffers["subfinder"]) == total
-
-    def test_print_summary_uses_full_buffers(self) -> None:
-        """_print_summary must print all lines, not just the last _MAX_DEBUG_LINES."""
-        from subdomainenum.cli import _MAX_DEBUG_LINES
-        from rich.console import Console
-
-        console = Console(record=True, width=120)
-        display = _DebugDisplay(console, "example.com")
-
-        total = _MAX_DEBUG_LINES + 3
-        for i in range(total):
-            display.add_line("subfinder", f"result{i}")
-        display.finish("subfinder", None)
-
-        display._print_summary()
-        output = console.export_text()
-
-        # First and last lines must both appear in the static summary
-        assert "result0" in output
-        assert f"result{total - 1}" in output

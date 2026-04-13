@@ -82,7 +82,7 @@ tests/
 - Test class naming: `TestRunTool`, `TestQueryCrtSh`, `TestAssess`, etc. (class-per-feature)
 - AAA pattern: Arrange → Act → Assert in every test method
 - Coverage target: ≥ 80% (configured in `pyproject.toml`)
-- Current test count: **162 tests**
+- Current test count: **192 tests**
 
 ## Adding a New Passive Source
 1. Create `subdomainenum/checks/passive/<name>.py` with a `query_<name>(domain) → SourceResult` function
@@ -96,13 +96,13 @@ tests/
 3. Import and add it to the active sources in `assessor.py`
 4. Write tests in `tests/checks/active/test_wrappers.py` (or a new file)
 
-## Debug Mode
-`--debug` streams each tool's raw output to stderr in real time using a `rich.live.Live`
-display. Each source gets its own coloured `Panel`; panels are stacked vertically and
-refresh up to 10×/s. Each panel keeps at most `_MAX_DEBUG_LINES` (20) lines via a
-`collections.deque`. The `_DebugDisplay` class in `cli.py` owns this logic and is
-thread-safe (passive sources run concurrently via `ThreadPoolExecutor`).
-The colour map lives in `_DEBUG_COLOURS` in `cli.py`. Add new sources there when adding checks.
+## Debug Log
+`--debug-log <path>` collects each tool's raw output to a plain-text log file.
+`DebugLogger` in `debug_logger.py` is the thread-safe collector; it receives
+`debug_cb`, `cmd_cb`, and `finish_cb` callbacks from `assess()` and writes one
+section per source (command, all output lines, status, optional error).
+No debug output is sent to stderr. After the scan a brief `Debug log → <path>`
+confirmation is printed to stderr.
 
 ## JSON / Output flags
 - `--json` → `to_dict(report)` printed as JSON to stdout (machine-readable)

@@ -14,8 +14,8 @@ $ subdomainenum check example.com
 ```
 
 ![Python](https://img.shields.io/badge/python-%3E%3D3.11-blue)
-![Tests](https://img.shields.io/badge/tests-162%20passing-brightgreen)
-![Coverage](https://img.shields.io/badge/coverage-98%25-brightgreen)
+![Tests](https://img.shields.io/badge/tests-192%20passing-brightgreen)
+![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)
 ![License](https://img.shields.io/badge/license-GPLv3-lightgrey)
 
 ---
@@ -142,18 +142,20 @@ subdomainenum check example.com --json
 subdomainenum check example.com --json --output report.json
 ```
 
-### Real-time debug output
+### Debug log
 
 ```bash
-# Stream each tool's raw output in coloured Rich panels (written to stderr)
-subdomainenum check example.com --debug
+# Save each tool's raw output to a log file
+subdomainenum check example.com --debug-log /tmp/debug.log
 
-# Also works with --json (panels still appear on stderr; JSON goes to stdout)
-subdomainenum check example.com --debug --json
+# Also works with --json
+subdomainenum check example.com --json --debug-log /tmp/debug.log
 ```
 
-Each active source gets its own bordered panel that updates in real time.
-Panels are capped at 20 lines per source (oldest lines roll off).
+When `--debug-log` is specified, every line emitted by each tool is written to
+the given file as structured plain text (one section per source, with the
+command, all output lines, status, and any error). No debug output is sent to
+stderr — a brief `Debug log → <path>` confirmation appears at the end.
 
 ### DNS timeout
 
@@ -337,7 +339,7 @@ pytest tests/test_assessor.py -v
 pytest tests/test_cli.py::TestCheckCommand -v
 ```
 
-The test suite has **162 tests** and achieves **97% coverage** across all modules.
+The test suite has **192 tests** and achieves **100% coverage** across all modules.
 
 All DNS I/O (`dns.resolver.Resolver.resolve`), TLS
 sockets, and subprocess calls are mocked at the boundary — no test touches a real

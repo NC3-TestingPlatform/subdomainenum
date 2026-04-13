@@ -10,6 +10,7 @@ Usage example::
     subdomainenum check example.com
     subdomainenum check example.com --mode active --wordlist /opt/seclists/Discovery/DNS/subdomains-top1million-5000.txt
     subdomainenum check example.com --mode all --url http://10.0.0.1 --json
+    subdomainenum check example.com --debug-log /tmp/debug.log
     subdomainenum info
 """
 
@@ -17,15 +18,11 @@ from __future__ import annotations
 
 import json
 import re
-from collections import defaultdict, deque
 from pathlib import Path
-from threading import Lock
 from typing import Annotated, Optional
 
 import typer
-from rich.console import Console, Group
-from rich.live import Live
-from rich.panel import Panel
+from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 from rich import box
@@ -33,6 +30,7 @@ from rich import box
 from subdomainenum import __version__
 from subdomainenum.assessor import assess
 from subdomainenum.constants import ACTIVE_TOOLS, detect_tools, get_install_hint
+from subdomainenum.debug_logger import DebugLogger
 from subdomainenum.models import EnumMode
 from subdomainenum.reporter import print_report, to_dict
 
@@ -44,230 +42,6 @@ app = typer.Typer(
 
 _console = Console(stderr=False)
 _err = Console(stderr=True)
-
-_DEBUG_COLOURS: dict[str, str] = {
-    "subfinder": "cyan",
-    "amass": "yellow",
-    "findomain": "blue",
-    "assetfinder": "green",
-    "dnsrecon": "magenta",
-    "gobuster": "red",
-    "wfuzz": "orange3",
-    "san": "bright_green",
-}
-
-_STATUS_COLOURS: dict[str, str] = {
-    "PENDING": "dim",
-    "RUNNING": "yellow",
-    "DONE": "green",
-    "FAILED": "red bold",
-}
-
-_MAX_DEBUG_LINES = 20
-
-
-class _LiveRenderable:
-    """Proxy renderable that delegates to ``_DebugDisplay._render()`` on every refresh.
-
-    Because Rich calls ``__rich_console__`` on every auto-refresh tick, the live
-    display always shows the latest state without any manual ``Live.update()``
-    calls.  This avoids the thread-safety problems that arise when multiple
-    passive-source threads call ``update()`` concurrently.
-    """
-
-    def __init__(self, display: "_DebugDisplay") -> None:
-        self._display = display
-
-    def __rich_console__(self, console: Console, options: object):  # noqa: ANN001
-        yield self._display._render()
-
-
-class _DebugDisplay:
-    """Thread-safe Live debug display: one bordered panel per source.
-
-    Each source has a lifecycle: PENDING → RUNNING → DONE | FAILED.
-    ``set_command`` transitions to RUNNING; ``finish`` transitions to DONE/FAILED.
-    Lines added via ``add_line`` implicitly flip PENDING to RUNNING.
-
-    All public methods are safe to call from multiple threads.  A single
-    :class:`threading.Lock` protects the shared state; the :class:`~rich.live.Live`
-    display auto-refreshes at 10 fps via :class:`_LiveRenderable` — no manual
-    ``update()`` calls are needed.
-
-    Usage::
-
-        with _DebugDisplay(console, domain) as display:
-            assess(
-                ...,
-                debug_cb=display.add_line,
-                cmd_cb=display.set_command,
-                finish_cb=display.finish,
-            )
-    """
-
-    def __init__(self, console: Console, domain: str) -> None:
-        self._domain = domain
-        self._lock = Lock()
-        self._buffers: dict[str, deque[str]] = defaultdict(lambda: deque(maxlen=_MAX_DEBUG_LINES))
-        self._full_buffers: dict[str, list[str]] = defaultdict(list)
-        self._commands: dict[str, str] = {}
-        self._statuses: dict[str, str] = {}
-        self._errors: dict[str, str | None] = {}
-        self._order: list[str] = []
-        self._live = Live(
-            _LiveRenderable(self),
-            console=console,
-            refresh_per_second=10,
-            auto_refresh=True,
-        )
-
-    def __enter__(self) -> "_DebugDisplay":
-        self._live.__enter__()
-        return self
-
-    def __exit__(self, *args: object) -> None:
-        self._live.__exit__(*args)
-        self._print_summary()
-
-    def _register(self, source: str) -> None:
-        """Ensure *source* is tracked (must be called with ``self._lock`` held)."""
-        if source not in self._order:
-            self._order.append(source)
-            self._statuses[source] = "PENDING"
-
-    def add_line(self, source: str, line: str) -> None:
-        """Append *line* from *source* to its panel buffer.
-
-        Implicitly transitions *source* from PENDING to RUNNING on the first call.
-
-        :param source: Tool/source name (e.g. ``"subfinder"``).
-        :param line: Raw output line emitted by the tool.
-        """
-        with self._lock:
-            self._register(source)
-            if self._statuses.get(source) == "PENDING":
-                self._statuses[source] = "RUNNING"
-            self._buffers[source].append(line)
-            self._full_buffers[source].append(line)
-
-    def set_command(self, source: str, cmd: str) -> None:
-        """Record the command string for *source* and mark it RUNNING.
-
-        :param source: Tool/source name (e.g. ``"subfinder"``).
-        :param cmd: Full command string or descriptive label for the operation.
-        """
-        with self._lock:
-            self._register(source)
-            self._commands[source] = cmd
-            self._statuses[source] = "RUNNING"
-
-    def finish(self, source: str, error: str | None) -> None:
-        """Mark *source* as DONE or FAILED.
-
-        :param source: Tool/source name.
-        :param error: Error message if the source failed; ``None`` on success.
-        """
-        with self._lock:
-            self._register(source)
-            self._errors[source] = error
-            self._statuses[source] = "FAILED" if error else "DONE"
-
-    def _print_summary(self) -> None:
-        """Print a static, complete summary of all source output after Live exits.
-
-        Uses ``_full_buffers`` (unbounded) so no lines are lost, even for
-        prolific sources that exceeded ``_MAX_DEBUG_LINES`` during the live run.
-        """
-        with self._lock:
-            order = list(self._order)
-            full_snapshots = {s: list(self._full_buffers[s]) for s in order}
-            commands = dict(self._commands)
-            statuses = dict(self._statuses)
-            errors = dict(self._errors)
-
-        console = self._live.console
-        console.print()
-        for source in order:
-            colour = _DEBUG_COLOURS.get(source, "white")
-            status = statuses.get(source, "PENDING")
-            status_colour = _STATUS_COLOURS.get(status, "white")
-            lines = full_snapshots[source]
-            cmd = commands.get(source)
-            error = errors.get(source)
-
-            body_parts: list[str] = []
-            if cmd:
-                body_parts.append(f"[dim]$ {cmd}[/dim]")
-            if lines:
-                body_parts.append("\n".join(lines))
-            if error:
-                body_parts.append(f"[red]Error: {error}[/red]")
-
-            content = "\n".join(body_parts) if body_parts else "[dim]—[/dim]"
-            title = (
-                f"[bold {colour}]{source}[/bold {colour}]"
-                f"  [{status_colour}]{status}[/{status_colour}]"
-            )
-            border = (
-                colour if status == "RUNNING"
-                else (status_colour.split()[0] if status in ("DONE", "FAILED") else "dim")
-            )
-            console.print(Panel(content, title=title, border_style=border, expand=True))
-
-    def _render(self) -> Group | Panel:
-        """Build the current renderable from buffered state (thread-safe snapshot)."""
-        with self._lock:
-            order = list(self._order)
-            snapshots = {s: list(self._buffers[s]) for s in order}
-            commands = dict(self._commands)
-            statuses = dict(self._statuses)
-            errors = dict(self._errors)
-
-        if not order:
-            return Panel(
-                "[dim]Waiting for sources…[/dim]",
-                title=f"[bold]DEBUG[/bold] — {self._domain}",
-                border_style="dim",
-            )
-
-        panels: list[Panel] = []
-        for source in order:
-            colour = _DEBUG_COLOURS.get(source, "white")
-            status = statuses.get(source, "PENDING")
-            status_colour = _STATUS_COLOURS.get(status, "white")
-            lines = snapshots[source]
-            cmd = commands.get(source)
-            error = errors.get(source)
-
-            # Build panel body: command header, then output lines, then any error
-            body_parts: list[str] = []
-            if cmd:
-                body_parts.append(f"[dim]$ {cmd}[/dim]")
-            if lines:
-                body_parts.append("\n".join(lines))
-            elif status == "RUNNING":
-                body_parts.append("[dim]running…[/dim]")
-            elif status == "PENDING":
-                body_parts.append("[dim]waiting…[/dim]")
-            if error:
-                body_parts.append(f"[red]Error: {error}[/red]")
-
-            content = "\n".join(body_parts) if body_parts else "[dim]—[/dim]"
-            title = (
-                f"[bold {colour}]{source}[/bold {colour}]"
-                f"  [{status_colour}]{status}[/{status_colour}]"
-            )
-            border = (
-                colour if status == "RUNNING"
-                else (status_colour.split()[0] if status in ("DONE", "FAILED") else "dim")
-            )
-            panels.append(Panel(
-                content,
-                title=title,
-                border_style=border,
-                expand=True,
-            ))
-        return Group(*panels)
 
 
 _DOMAIN_RE = re.compile(
@@ -338,10 +112,13 @@ def check(
         float,
         typer.Option("--timeout", help="DNS resolution timeout per query in seconds."),
     ] = 5.0,
-    debug: Annotated[
-        bool,
-        typer.Option("--debug", help="Stream each tool's raw output to stderr in real time (coloured by source)."),
-    ] = False,
+    debug_log: Annotated[
+        Optional[str],
+        typer.Option(
+            "--debug-log",
+            help="Save each tool's raw output to a log file (e.g. /tmp/debug.log).",
+        ),
+    ] = None,
 ) -> None:
     """Run subdomain enumeration for DOMAIN and display the results."""
     domain = _validate_domain(domain)
@@ -354,73 +131,42 @@ def check(
         _err.print(f"[red]Error:[/red] wordlist not found: {wordlist}")
         raise typer.Exit(code=1)
 
-    if json_output:
-        if debug:
-            with _DebugDisplay(_err, domain) as display:
-                try:
-                    report = assess(
-                        domain,
-                        mode=mode,
-                        wordlist=wordlist,
-                        url=url,
-                        timeout=timeout,
-                        debug_cb=display.add_line,
-                        cmd_cb=display.set_command,
-                        finish_cb=display.finish,
-                    )
-                except Exception as exc:
-                    _console.print(json.dumps({"error": str(exc)}, indent=2))
-                    raise typer.Exit(code=1)
-        else:
-            try:
-                report = assess(
-                    domain,
-                    mode=mode,
-                    wordlist=wordlist,
-                    url=url,
-                    timeout=timeout,
-                )
-            except Exception as exc:
+    logger: DebugLogger | None = DebugLogger() if debug_log else None
+
+    with Progress(SpinnerColumn(), TextColumn("{task.description}"), console=_err) as progress:
+        task = progress.add_task(f"Enumerating {domain}…", total=None)
+
+        def _progress_cb(msg: str) -> None:
+            progress.update(task, description=msg)
+
+        assess_kwargs: dict = dict(
+            mode=mode,
+            wordlist=wordlist,
+            url=url,
+            timeout=timeout,
+            progress_cb=_progress_cb,
+        )
+        if logger is not None:
+            assess_kwargs["debug_cb"] = logger.add_line
+            assess_kwargs["cmd_cb"] = logger.set_command
+            assess_kwargs["finish_cb"] = logger.finish
+
+        try:
+            report = assess(domain, **assess_kwargs)
+        except Exception as exc:
+            if json_output:
                 _console.print(json.dumps({"error": str(exc)}, indent=2))
-                raise typer.Exit(code=1)
+            else:
+                _err.print(f"[red]Error:[/red] {exc}")
+            raise typer.Exit(code=1)
+
+    if logger is not None and debug_log:
+        logger.save_to_file(debug_log, domain=domain)
+        _err.print(f"[dim]Debug log →[/dim] {debug_log}")
+
+    if json_output:
         _print_json(report)
         return
-
-    if debug:
-        with _DebugDisplay(_err, domain) as display:
-            try:
-                report = assess(
-                    domain,
-                    mode=mode,
-                    wordlist=wordlist,
-                    url=url,
-                    timeout=timeout,
-                    debug_cb=display.add_line,
-                    cmd_cb=display.set_command,
-                    finish_cb=display.finish,
-                )
-            except ValueError as exc:
-                _err.print(f"[red]Error:[/red] {exc}")
-                raise typer.Exit(code=1)
-    else:
-        with Progress(SpinnerColumn(), TextColumn("{task.description}"), console=_err) as progress:
-            task = progress.add_task(f"Enumerating {domain}…", total=None)
-
-            def _progress_cb(msg: str) -> None:
-                progress.update(task, description=msg)
-
-            try:
-                report = assess(
-                    domain,
-                    mode=mode,
-                    wordlist=wordlist,
-                    url=url,
-                    timeout=timeout,
-                    progress_cb=_progress_cb,
-                )
-            except ValueError as exc:
-                _err.print(f"[red]Error:[/red] {exc}")
-                raise typer.Exit(code=1)
 
     print_report(report, console=_console)
 
