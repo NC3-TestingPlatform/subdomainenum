@@ -103,20 +103,18 @@ class TestRunPassive:
     def test_returns_all_source_results(self) -> None:
         src = _make_source("sub.example.com")
         with (
-            patch("subdomainenum.assessor.query_san", return_value=src),
             patch("subdomainenum.assessor.run_subfinder", return_value=src),
             patch("subdomainenum.assessor.run_amass", return_value=src),
             patch("subdomainenum.assessor.run_findomain", return_value=src),
             patch("subdomainenum.assessor.run_assetfinder", return_value=src),
         ):
             results = _run_passive("example.com", progress_cb=None)
-        assert len(results) == 5
+        assert len(results) == 4
 
     def test_progress_cb_called(self) -> None:
         calls: list[str] = []
         src = _make_source()
         with (
-            patch("subdomainenum.assessor.query_san", return_value=src),
             patch("subdomainenum.assessor.run_subfinder", return_value=src),
             patch("subdomainenum.assessor.run_amass", return_value=src),
             patch("subdomainenum.assessor.run_findomain", return_value=src),
@@ -136,7 +134,6 @@ class TestRunPassive:
 
         src = _make_source()
         with (
-            patch("subdomainenum.assessor.query_san", return_value=src),
             patch("subdomainenum.assessor.run_subfinder", side_effect=fake_subfinder),
             patch("subdomainenum.assessor.run_amass", return_value=src),
             patch("subdomainenum.assessor.run_findomain", return_value=src),
@@ -153,15 +150,14 @@ class TestRunPassive:
         """Cover the lambda body in _cmd_cb by having a mock call cmd_cb."""
         cmd_calls: list[tuple] = []
 
-        def fake_san(domain, *, cmd_cb=None, **kwargs):
+        def fake_subfinder(domain, *, cmd_cb=None, **kwargs):
             if cmd_cb:
-                cmd_cb("TLS SAN probe example.com:443")
+                cmd_cb("subfinder -d example.com -silent")
             return _make_source()
 
         src = _make_source()
         with (
-            patch("subdomainenum.assessor.query_san", side_effect=fake_san),
-            patch("subdomainenum.assessor.run_subfinder", return_value=src),
+            patch("subdomainenum.assessor.run_subfinder", side_effect=fake_subfinder),
             patch("subdomainenum.assessor.run_amass", return_value=src),
             patch("subdomainenum.assessor.run_findomain", return_value=src),
             patch("subdomainenum.assessor.run_assetfinder", return_value=src),
@@ -171,14 +167,13 @@ class TestRunPassive:
                 progress_cb=None,
                 cmd_cb=lambda s, c: cmd_calls.append((s, c)),
             )
-        assert any(s == "san" for s, _ in cmd_calls)
+        assert any(s == "subfinder" for s, _ in cmd_calls)
 
     def test_source_exception_captured(self) -> None:
-        """Cover lines 91-92: exception from a future is caught and stored."""
+        """Cover the exception branch: exception from a future is caught and stored."""
         src = _make_source()
         with (
-            patch("subdomainenum.assessor.query_san", side_effect=RuntimeError("boom")),
-            patch("subdomainenum.assessor.run_subfinder", return_value=src),
+            patch("subdomainenum.assessor.run_subfinder", side_effect=RuntimeError("boom")),
             patch("subdomainenum.assessor.run_amass", return_value=src),
             patch("subdomainenum.assessor.run_findomain", return_value=src),
             patch("subdomainenum.assessor.run_assetfinder", return_value=src),
@@ -193,7 +188,6 @@ class TestRunPassive:
         finish_calls: list[tuple] = []
         src = _make_source("sub.example.com")
         with (
-            patch("subdomainenum.assessor.query_san", return_value=src),
             patch("subdomainenum.assessor.run_subfinder", return_value=src),
             patch("subdomainenum.assessor.run_amass", return_value=src),
             patch("subdomainenum.assessor.run_findomain", return_value=src),
@@ -204,7 +198,7 @@ class TestRunPassive:
                 progress_cb=None,
                 finish_cb=lambda name, err: finish_calls.append((name, err)),
             )
-        assert len(finish_calls) == 5
+        assert len(finish_calls) == 4
         assert all(err is None for _, err in finish_calls)
 
     def test_finish_cb_called_on_error(self) -> None:
@@ -212,8 +206,7 @@ class TestRunPassive:
         finish_calls: list[tuple] = []
         src = _make_source()
         with (
-            patch("subdomainenum.assessor.query_san", side_effect=RuntimeError("network error")),
-            patch("subdomainenum.assessor.run_subfinder", return_value=src),
+            patch("subdomainenum.assessor.run_subfinder", side_effect=RuntimeError("network error")),
             patch("subdomainenum.assessor.run_amass", return_value=src),
             patch("subdomainenum.assessor.run_findomain", return_value=src),
             patch("subdomainenum.assessor.run_assetfinder", return_value=src),

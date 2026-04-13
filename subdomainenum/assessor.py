@@ -20,7 +20,6 @@ from subdomainenum.checks.active.findomain import run_findomain
 from subdomainenum.checks.active.gobuster_dns import run_gobuster_dns
 from subdomainenum.checks.active.subfinder import run_subfinder
 from subdomainenum.checks.active.wfuzz import run_wfuzz
-from subdomainenum.checks.passive.san import query_san
 from subdomainenum.dns_utils import resolve_ips
 from subdomainenum.models import (
     EnumMode,
@@ -68,10 +67,6 @@ def _run_passive(
 
     sources: list[SourceResult] = []
 
-    def _run_san() -> SourceResult:
-        _cb("Probing TLS SAN…")
-        return query_san(domain, cmd_cb=_cmd_cb("san"))
-
     def _run_subfinder() -> SourceResult:
         _cb("Running subfinder (passive)…")
         return run_subfinder(domain, line_cb=_line_cb("subfinder"), cmd_cb=_cmd_cb("subfinder"))
@@ -89,7 +84,6 @@ def _run_passive(
         return run_assetfinder(domain, line_cb=_line_cb("assetfinder"), cmd_cb=_cmd_cb("assetfinder"))
 
     source_tasks: dict[str, Callable[[], SourceResult]] = {
-        "san": _run_san,
         "subfinder": _run_subfinder,
         "amass": _run_amass,
         "findomain": _run_findomain,

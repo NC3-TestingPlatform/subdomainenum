@@ -3,9 +3,8 @@
 > Passive and active subdomain enumeration for any target domain — from the
 > command line or as a Python library.
 
-**subdomainenum** discovers subdomains through native passive sources (TLS SAN
-probing) and external tools (subfinder, amass, findomain, assetfinder — which
-also queries crt.sh and other CT logs internally),
+**subdomainenum** discovers subdomains through passive tools (subfinder, amass,
+findomain, assetfinder — which also queries crt.sh and other CT logs internally),
 optionally brute-forces DNS with dnsrecon and gobuster, fuzzes virtual hosts via
 wfuzz, resolves each result, and prints a colour-coded summary.
 
@@ -14,7 +13,7 @@ $ subdomainenum check example.com
 ```
 
 ![Python](https://img.shields.io/badge/python-%3E%3D3.11-blue)
-![Tests](https://img.shields.io/badge/tests-192%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-182%20passing-brightgreen)
 ![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)
 ![License](https://img.shields.io/badge/license-GPLv3-lightgrey)
 
@@ -39,7 +38,6 @@ $ subdomainenum check example.com
 
 | Source / Mode      | Type    | What it does                                                                         |
 | ------------------ | ------- | ------------------------------------------------------------------------------------ |
-| **TLS SAN**        | Passive | Connects to port 443, extracts DNS names from the certificate's Subject Alt Names    |
 | **subfinder**      | Passive | Runs `subfinder -d domain -silent`                                                   |
 | **amass**          | Passive | Runs `amass enum -d domain -silent`                                                  |
 | **findomain**      | Passive | Runs `findomain --target domain --quiet`                                             |
@@ -339,7 +337,7 @@ pytest tests/test_assessor.py -v
 pytest tests/test_cli.py::TestCheckCommand -v
 ```
 
-The test suite has **192 tests** and achieves **100% coverage** across all modules.
+The test suite has **182 tests** and achieves **100% coverage** across all modules.
 
 All DNS I/O (`dns.resolver.Resolver.resolve`), TLS
 sockets, and subprocess calls are mocked at the boundary — no test touches a real
