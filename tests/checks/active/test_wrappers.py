@@ -172,13 +172,37 @@ class TestRunDnsrecon:
         assert isinstance(result, SourceResult)
         assert result.name == "dnsrecon"
 
-    def test_wordlist_in_command(self) -> None:
+    def test_two_invocations_are_made(self) -> None:
+        with patch("subdomainenum.checks.active.dnsrecon.run_tool", return_value=[]) as mock:
+            run_dnsrecon("example.com", wordlist="/tmp/words.txt")
+        assert mock.call_count == 2
+
+    def test_first_invocation_uses_passive_types(self) -> None:
+        with patch("subdomainenum.checks.active.dnsrecon.run_tool", return_value=[]) as mock:
+            run_dnsrecon("example.com", wordlist="/tmp/words.txt")
+            first_cmd = mock.call_args_list[0][0][0]
+        assert "-t" in first_cmd
+        type_val = first_cmd[first_cmd.index("-t") + 1]
+        assert "std" in type_val
+        assert "axfr" in type_val
+        assert "crt" in type_val
+        # wordlist-only types must not be in the first invocation
+        assert "brt" not in type_val
+        assert "snoop" not in type_val
+        # wordlist flag must not appear in first invocation
+        assert "-D" not in first_cmd
+
+    def test_second_invocation_uses_wordlist_types(self) -> None:
         with patch("subdomainenum.checks.active.dnsrecon.run_tool", return_value=[]) as mock:
             run_dnsrecon("example.com", wordlist="/tmp/subdomains.txt")
-            cmd = mock.call_args[0][0]
-        assert "/tmp/subdomains.txt" in cmd
+            second_cmd = mock.call_args_list[1][0][0]
+        assert "-D" in second_cmd
+        assert "/tmp/subdomains.txt" in second_cmd
+        type_val = second_cmd[second_cmd.index("-t") + 1]
+        assert "brt" in type_val
+        assert "snoop" in type_val
 
-    def test_tool_missing(self) -> None:
+    def test_tool_missing_sets_available_false(self) -> None:
         with patch(
             "subdomainenum.checks.active.dnsrecon.run_tool",
             side_effect=RuntimeError("dnsrecon not found"),
@@ -186,17 +210,65 @@ class TestRunDnsrecon:
             result = run_dnsrecon("example.com", wordlist="/tmp/w.txt")
         assert result.available is False
 
-    def test_parses_output_lines(self) -> None:
-        output = ["[*] A sub.example.com 1.2.3.4"]
-        with patch("subdomainenum.checks.active.dnsrecon.run_tool", return_value=output):
+    def test_parses_output_from_first_invocation(self) -> None:
+        with patch(
+            "subdomainenum.checks.active.dnsrecon.run_tool",
+            side_effect=[["[*] A std.example.com 1.2.3.4"], []],
+        ):
             result = run_dnsrecon("example.com", wordlist="/tmp/w.txt")
-        assert "sub.example.com" in result.subdomains
+        assert "std.example.com" in result.subdomains
 
-    def test_cmd_cb_passed_to_run_tool(self) -> None:
+    def test_parses_output_from_second_invocation(self) -> None:
+        with patch(
+            "subdomainenum.checks.active.dnsrecon.run_tool",
+            side_effect=[[], ["[*] A brt.example.com 1.2.3.4"]],
+        ):
+            result = run_dnsrecon("example.com", wordlist="/tmp/w.txt")
+        assert "brt.example.com" in result.subdomains
+
+    def test_merges_results_from_both_invocations(self) -> None:
+        with patch(
+            "subdomainenum.checks.active.dnsrecon.run_tool",
+            side_effect=[
+                ["[*] A a.example.com 1.1.1.1"],
+                ["[*] A b.example.com 2.2.2.2"],
+            ],
+        ):
+            result = run_dnsrecon("example.com", wordlist="/tmp/w.txt")
+        assert "a.example.com" in result.subdomains
+        assert "b.example.com" in result.subdomains
+
+    def test_deduplicates_subdomains_across_invocations(self) -> None:
+        with patch(
+            "subdomainenum.checks.active.dnsrecon.run_tool",
+            side_effect=[
+                ["[*] A dup.example.com 1.1.1.1"],
+                ["[*] A dup.example.com 1.1.1.1"],
+            ],
+        ):
+            result = run_dnsrecon("example.com", wordlist="/tmp/w.txt")
+        assert result.subdomains.count("dup.example.com") == 1
+
+    def test_second_invocation_error_is_non_fatal(self) -> None:
+        """First invocation succeeds; second fails — results from first are kept."""
+        with patch(
+            "subdomainenum.checks.active.dnsrecon.run_tool",
+            side_effect=[
+                ["[*] A ok.example.com 1.1.1.1"],
+                RuntimeError("timeout"),
+            ],
+        ):
+            result = run_dnsrecon("example.com", wordlist="/tmp/w.txt")
+        assert result.available is True
+        assert "ok.example.com" in result.subdomains
+        assert result.error is not None
+
+    def test_cmd_cb_passed_to_both_invocations(self) -> None:
         cb = lambda cmd: None
         with patch("subdomainenum.checks.active.dnsrecon.run_tool", return_value=[]) as mock:
             run_dnsrecon("example.com", wordlist="/tmp/w.txt", cmd_cb=cb)
-        assert mock.call_args.kwargs.get("cmd_cb") is cb
+        for call in mock.call_args_list:
+            assert call.kwargs.get("cmd_cb") is cb
 
 
 # ---------------------------------------------------------------------------
