@@ -8,7 +8,7 @@ from unittest.mock import patch
 import pytest
 from typer.testing import CliRunner
 
-from subdomainenum.cli import app
+from subdomainenum.cli import _DebugDisplay, app
 from subdomainenum.models import EnumMode, EnumReport, SourceResult, Status, SubdomainResult
 
 runner = CliRunner()
@@ -193,3 +193,45 @@ class TestVersionFlag:
         result = runner.invoke(app, ["--version"])
         assert result.exit_code == 0
         assert "subdomainenum" in result.stdout
+
+
+class TestDebugDisplay:
+    """Tests for _DebugDisplay internal buffering and post-exit summary."""
+
+    def _make_display(self):
+        from rich.console import Console
+        return _DebugDisplay(Console(stderr=True), "example.com")
+
+    def test_full_buffers_captures_all_lines_beyond_max_debug_lines(self) -> None:
+        """_full_buffers must retain every line, even past _MAX_DEBUG_LINES."""
+        from subdomainenum.cli import _MAX_DEBUG_LINES
+
+        display = self._make_display()
+        total = _MAX_DEBUG_LINES + 5
+        for i in range(total):
+            display.add_line("subfinder", f"line{i}")
+
+        # Rolling deque is capped at _MAX_DEBUG_LINES
+        assert len(display._buffers["subfinder"]) == _MAX_DEBUG_LINES
+        # Full buffer retains everything
+        assert len(display._full_buffers["subfinder"]) == total
+
+    def test_print_summary_uses_full_buffers(self) -> None:
+        """_print_summary must print all lines, not just the last _MAX_DEBUG_LINES."""
+        from subdomainenum.cli import _MAX_DEBUG_LINES
+        from rich.console import Console
+
+        console = Console(record=True, width=120)
+        display = _DebugDisplay(console, "example.com")
+
+        total = _MAX_DEBUG_LINES + 3
+        for i in range(total):
+            display.add_line("subfinder", f"result{i}")
+        display.finish("subfinder", None)
+
+        display._print_summary()
+        output = console.export_text()
+
+        # First and last lines must both appear in the static summary
+        assert "result0" in output
+        assert f"result{total - 1}" in output

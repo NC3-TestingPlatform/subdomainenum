@@ -109,6 +109,7 @@ class _DebugDisplay:
         self._domain = domain
         self._lock = Lock()
         self._buffers: dict[str, deque[str]] = defaultdict(lambda: deque(maxlen=_MAX_DEBUG_LINES))
+        self._full_buffers: dict[str, list[str]] = defaultdict(list)
         self._commands: dict[str, str] = {}
         self._statuses: dict[str, str] = {}
         self._errors: dict[str, str | None] = {}
@@ -126,6 +127,7 @@ class _DebugDisplay:
 
     def __exit__(self, *args: object) -> None:
         self._live.__exit__(*args)
+        self._print_summary()
 
     def _register(self, source: str) -> None:
         """Ensure *source* is tracked (must be called with ``self._lock`` held)."""
@@ -146,6 +148,7 @@ class _DebugDisplay:
             if self._statuses.get(source) == "PENDING":
                 self._statuses[source] = "RUNNING"
             self._buffers[source].append(line)
+            self._full_buffers[source].append(line)
 
     def set_command(self, source: str, cmd: str) -> None:
         """Record the command string for *source* and mark it RUNNING.
@@ -168,6 +171,48 @@ class _DebugDisplay:
             self._register(source)
             self._errors[source] = error
             self._statuses[source] = "FAILED" if error else "DONE"
+
+    def _print_summary(self) -> None:
+        """Print a static, complete summary of all source output after Live exits.
+
+        Uses ``_full_buffers`` (unbounded) so no lines are lost, even for
+        prolific sources that exceeded ``_MAX_DEBUG_LINES`` during the live run.
+        """
+        with self._lock:
+            order = list(self._order)
+            full_snapshots = {s: list(self._full_buffers[s]) for s in order}
+            commands = dict(self._commands)
+            statuses = dict(self._statuses)
+            errors = dict(self._errors)
+
+        console = self._live.console
+        console.print()
+        for source in order:
+            colour = _DEBUG_COLOURS.get(source, "white")
+            status = statuses.get(source, "PENDING")
+            status_colour = _STATUS_COLOURS.get(status, "white")
+            lines = full_snapshots[source]
+            cmd = commands.get(source)
+            error = errors.get(source)
+
+            body_parts: list[str] = []
+            if cmd:
+                body_parts.append(f"[dim]$ {cmd}[/dim]")
+            if lines:
+                body_parts.append("\n".join(lines))
+            if error:
+                body_parts.append(f"[red]Error: {error}[/red]")
+
+            content = "\n".join(body_parts) if body_parts else "[dim]—[/dim]"
+            title = (
+                f"[bold {colour}]{source}[/bold {colour}]"
+                f"  [{status_colour}]{status}[/{status_colour}]"
+            )
+            border = (
+                colour if status == "RUNNING"
+                else (status_colour.split()[0] if status in ("DONE", "FAILED") else "dim")
+            )
+            console.print(Panel(content, title=title, border_style=border, expand=True))
 
     def _render(self) -> Group | Panel:
         """Build the current renderable from buffered state (thread-safe snapshot)."""
