@@ -3,8 +3,9 @@
 > Passive and active subdomain enumeration for any target domain — from the
 > command line or as a Python library.
 
-**subdomainenum** discovers subdomains through native passive sources (crt.sh,
-TLS SAN probing) and external tools (subfinder, amass, findomain, assetfinder),
+**subdomainenum** discovers subdomains through native passive sources (TLS SAN
+probing) and external tools (subfinder, amass, findomain, assetfinder — which
+also queries crt.sh and other CT logs internally),
 optionally brute-forces DNS with dnsrecon and gobuster, fuzzes virtual hosts via
 wfuzz, resolves each result, and prints a colour-coded summary.
 
@@ -13,7 +14,7 @@ $ subdomainenum check example.com
 ```
 
 ![Python](https://img.shields.io/badge/python-%3E%3D3.11-blue)
-![Tests](https://img.shields.io/badge/tests-164%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-154%20passing-brightgreen)
 ![Coverage](https://img.shields.io/badge/coverage-98%25-brightgreen)
 ![License](https://img.shields.io/badge/license-GPLv3-lightgrey)
 
@@ -38,10 +39,9 @@ $ subdomainenum check example.com
 
 | Source / Mode         | Type    | What it does                                                                         |
 | --------------------- | ------- | ------------------------------------------------------------------------------------ |
-| **crt.sh**            | Passive | Queries the Certificate Transparency log via direct PostgreSQL connection to `crt.sh:5432` |
 | **TLS SAN**           | Passive | Connects to port 443, extracts DNS names from the certificate's Subject Alt Names    |
-| **subfinder**         | Passive | Runs `subfinder -d domain -silent -passive`                                          |
-| **amass**             | Passive | Runs `amass enum -d domain -silent -passive`                                         |
+| **subfinder**         | Passive | Runs `subfinder -d domain -silent`                                                   |
+| **amass**             | Passive | Runs `amass enum -d domain -silent` (passive is the default mode)                   |
 | **findomain**         | Passive | Runs `findomain --target domain --quiet`                                             |
 | **assetfinder**       | Passive | Runs `assetfinder --subs-only domain`                                                |
 | **dnsrecon**          | Active  | Brute-forces DNS with a wordlist (`-t brt`)                                          |
@@ -104,7 +104,7 @@ Run `subdomainenum info` to check which tools are detected on your `$PATH`:
 ### Passive enumeration (default)
 
 ```bash
-# Queries crt.sh, TLS SAN, subfinder, amass, findomain, assetfinder
+# Queries TLS SAN, subfinder, amass, findomain, assetfinder (assetfinder includes crt.sh + CT logs)
 subdomainenum check example.com
 ```
 
@@ -282,12 +282,12 @@ subdomainenum/
 │   ├── cli.py                   Typer CLI: check, info sub-commands
 │   └── checks/
 │       ├── passive/
-│       │   ├── crt_sh.py        Certificate Transparency log query (native Python)
 │       │   └── san.py           TLS SAN extraction (native Python)
+│       │                        (CT log data covered by assetfinder internally)
 │       └── active/
 │           ├── tool_runner.py   subprocess wrapper used by all active tools
-│           ├── subfinder.py     subfinder -passive wrapper
-│           ├── amass.py         amass enum -passive wrapper
+│           ├── subfinder.py     subfinder wrapper
+│           ├── amass.py         amass enum wrapper (passive is amass's default)
 │           ├── findomain.py     findomain wrapper
 │           ├── assetfinder.py   assetfinder wrapper
 │           ├── dnsrecon.py      dnsrecon -t brt wrapper
@@ -337,9 +337,9 @@ pytest tests/test_assessor.py -v
 pytest tests/test_cli.py::TestCheckCommand -v
 ```
 
-The test suite has **164 tests** and achieves **98% coverage** across all modules.
+The test suite has **154 tests** and achieves **97% coverage** across all modules.
 
-All DNS I/O (`dns.resolver.Resolver.resolve`), HTTP requests (`requests.get`), TLS
+All DNS I/O (`dns.resolver.Resolver.resolve`), TLS
 sockets, and subprocess calls are mocked at the boundary — no test touches a real
 server or the internet.
 

@@ -20,7 +20,6 @@ from subdomainenum.checks.active.findomain import run_findomain
 from subdomainenum.checks.active.gobuster_dns import run_gobuster_dns
 from subdomainenum.checks.active.subfinder import run_subfinder
 from subdomainenum.checks.active.wfuzz import run_wfuzz
-from subdomainenum.checks.passive.crt_sh import query_crt_sh
 from subdomainenum.checks.passive.san import query_san
 from subdomainenum.dns_utils import resolve_ips
 from subdomainenum.models import (
@@ -69,10 +68,6 @@ def _run_passive(
 
     sources: list[SourceResult] = []
 
-    def _run_crt() -> SourceResult:
-        _cb("Running crt.sh query…")
-        return query_crt_sh(domain, cmd_cb=_cmd_cb("crt.sh"))
-
     def _run_san() -> SourceResult:
         _cb("Probing TLS SAN…")
         return query_san(domain, cmd_cb=_cmd_cb("san"))
@@ -94,7 +89,6 @@ def _run_passive(
         return run_assetfinder(domain, line_cb=_line_cb("assetfinder"), cmd_cb=_cmd_cb("assetfinder"))
 
     source_tasks: dict[str, Callable[[], SourceResult]] = {
-        "crt.sh": _run_crt,
         "san": _run_san,
         "subfinder": _run_subfinder,
         "amass": _run_amass,

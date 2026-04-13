@@ -108,7 +108,7 @@ class EnumReport:
     """
 
     domain: str
-    mode: EnumMode = EnumMode.PASSIVE
+    mode: EnumMode = EnumMode.ALL
     subdomains: list[SubdomainResult] = field(default_factory=list)
     vhosts: list[VhostResult] = field(default_factory=list)
     sources: list[SourceResult] = field(default_factory=list)

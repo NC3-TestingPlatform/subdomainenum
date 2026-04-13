@@ -53,7 +53,6 @@ _DEBUG_COLOURS: dict[str, str] = {
     "dnsrecon": "magenta",
     "gobuster": "red",
     "wfuzz": "orange3",
-    "crt.sh": "bright_cyan",
     "san": "bright_green",
 }
 
@@ -266,7 +265,7 @@ def check(
     mode: Annotated[
         EnumMode,
         typer.Option("--mode", "-m", help="Enumeration mode: passive | active | all."),
-    ] = EnumMode.PASSIVE,
+    ] = EnumMode.ALL,
     wordlist: Annotated[
         Optional[str],
         typer.Option("--wordlist", "-w", help="Path to DNS wordlist (required for active/all modes)."),

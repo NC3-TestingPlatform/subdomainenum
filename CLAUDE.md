@@ -6,7 +6,6 @@
 | Language | Python | ≥ 3.11 |
 | CLI framework | Typer | ≥ 0.12 |
 | Terminal output | Rich | ≥ 13.7 |
-| HTTP client | requests | ≥ 2.31 |
 | DNS resolver | dnspython | ≥ 2.6 |
 | TLS parsing | cryptography | ≥ 42 |
 | Testing | pytest + pytest-cov + pytest-mock | ≥ 8 / ≥ 5 / ≥ 3.12 |
@@ -34,8 +33,8 @@ subdomainenum/
   verdict.py          → VerdictSummary dataclass + make_verdict() (pure, no I/O)
   checks/
     passive/
-      crt_sh.py       → query_crt_sh(): Certificate Transparency via crt.sh API
       san.py          → query_san(): TLS Subject Alt Names from live certificate
+      # Note: crt.sh CT data is covered by assetfinder, which queries crt.sh internally
     active/
       tool_runner.py  → run_tool(): subprocess wrapper with timeout + streaming
       subfinder.py    → run_subfinder()
@@ -49,7 +48,6 @@ tests/
   conftest.py              → shared fixtures
   test_*.py                → pytest, AAA pattern, class-per-feature grouping
   checks/passive/
-    test_crt_sh.py
     test_san.py
   checks/active/
     test_tool_runner.py
@@ -69,13 +67,12 @@ tests/
 ### I/O boundaries (mock these in tests)
 | Boundary | Module | What to patch |
 |----------|--------|---------------|
-| HTTP (crt.sh) | `checks/passive/crt_sh.py` | `requests.get` |
 | TLS socket | `checks/passive/san.py` | `ssl.create_default_context` / `socket.create_connection` |
 | Subprocess tools | `checks/active/tool_runner.py` | `subprocess.Popen` |
 | DNS resolution | `dns_utils.py` | `dns.resolver.Resolver.resolve` |
 
 ### EnumMode behaviour
-- `passive` — crt.sh, SAN, subfinder, amass (passive), findomain, assetfinder
+- `passive` — SAN, subfinder, amass, findomain, assetfinder (assetfinder also queries crt.sh, certspotter, and other CT sources internally)
 - `active` — dnsrecon, gobuster dns (require `--wordlist`); wfuzz only when `--url` provided
 - `all` — both passive and active
 
@@ -85,7 +82,7 @@ tests/
 - Test class naming: `TestRunTool`, `TestQueryCrtSh`, `TestAssess`, etc. (class-per-feature)
 - AAA pattern: Arrange → Act → Assert in every test method
 - Coverage target: ≥ 80% (configured in `pyproject.toml`)
-- Current test count: **164 tests**
+- Current test count: **154 tests**
 
 ## Adding a New Passive Source
 1. Create `subdomainenum/checks/passive/<name>.py` with a `query_<name>(domain) → SourceResult` function
