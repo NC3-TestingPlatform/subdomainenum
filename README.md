@@ -142,6 +142,19 @@ subdomainenum check example.com --json
 subdomainenum check example.com --json --output report.json
 ```
 
+### Real-time debug output
+
+```bash
+# Stream each tool's raw output in coloured Rich panels (written to stderr)
+subdomainenum check example.com --debug
+
+# Also works with --json (panels still appear on stderr; JSON goes to stdout)
+subdomainenum check example.com --debug --json
+```
+
+Each active source gets its own bordered panel that updates in real time.
+Panels are capped at 20 lines per source (oldest lines roll off).
+
 ### DNS timeout
 
 ```bash

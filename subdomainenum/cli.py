@@ -17,13 +17,16 @@ from __future__ import annotations
 
 import json
 import re
+from collections import defaultdict, deque
 from pathlib import Path
-from typing import Annotated, Callable, Optional
+from threading import Lock
+from typing import Annotated, Optional
 
 import typer
-from rich.console import Console
+from rich.console import Console, Group
+from rich.live import Live
+from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
-from rich.rule import Rule
 from rich.table import Table
 from rich import box
 
@@ -53,6 +56,81 @@ _DEBUG_COLOURS: dict[str, str] = {
     "crt.sh": "bright_cyan",
     "san": "bright_green",
 }
+
+_MAX_DEBUG_LINES = 20
+
+
+class _DebugDisplay:
+    """Thread-safe Live Rich display that renders each source's output in its own panel.
+
+    Passive sources run concurrently, so ``add_line`` must be safe to call from
+    multiple threads simultaneously.  A :class:`threading.Lock` protects the
+    shared buffers; the :class:`~rich.live.Live` display is updated after each
+    write.
+
+    Usage::
+
+        with _DebugDisplay(console, domain) as display:
+            assess(..., debug_cb=display.add_line)
+    """
+
+    def __init__(self, console: Console, domain: str) -> None:
+        self._domain = domain
+        self._lock = Lock()
+        self._buffers: dict[str, deque[str]] = defaultdict(lambda: deque(maxlen=_MAX_DEBUG_LINES))
+        self._order: list[str] = []
+        self._live = Live(
+            self._render(),
+            console=console,
+            refresh_per_second=10,
+        )
+
+    def __enter__(self) -> _DebugDisplay:
+        self._live.__enter__()
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        self._live.update(self._render())
+        self._live.__exit__(*args)
+
+    def add_line(self, source: str, line: str) -> None:
+        """Append *line* from *source* and refresh the live display.
+
+        :param source: Tool/source name (e.g. ``"subfinder"``).
+        :param line: Raw output line emitted by the tool.
+        """
+        with self._lock:
+            if source not in self._order:
+                self._order.append(source)
+            self._buffers[source].append(line)
+        self._live.update(self._render())
+
+    def _render(self) -> Group | Panel:
+        """Build the current renderable from buffered lines."""
+        with self._lock:
+            order = list(self._order)
+            snapshots = {s: list(self._buffers[s]) for s in order}
+
+        if not order:
+            return Panel(
+                "[dim]Waiting for sources…[/dim]",
+                title=f"[bold]DEBUG[/bold] — {self._domain}",
+                border_style="dim",
+            )
+
+        panels: list[Panel] = []
+        for source in order:
+            colour = _DEBUG_COLOURS.get(source, "white")
+            lines = snapshots[source]
+            content = "\n".join(lines) if lines else "[dim]waiting…[/dim]"
+            panels.append(Panel(
+                content,
+                title=f"[bold {colour}]{source}[/bold {colour}]",
+                border_style=colour,
+                expand=True,
+            ))
+        return Group(*panels)
+
 
 _DOMAIN_RE = re.compile(
     r"^(?=.{1,253}$)"
@@ -138,9 +216,8 @@ def check(
         _err.print(f"[red]Error:[/red] wordlist not found: {wordlist}")
         raise typer.Exit(code=1)
 
-    debug_cb = _make_debug_cb(_err) if debug else None
-
     if json_output:
+        debug_cb = _DebugDisplay(_err, domain).add_line if debug else None
         try:
             report = assess(
                 domain,
@@ -157,20 +234,19 @@ def check(
         return
 
     if debug:
-        _err.print(Rule(f"[bold]DEBUG[/bold] — {domain}", style="dim"))
-        try:
-            report = assess(
-                domain,
-                mode=mode,
-                wordlist=wordlist,
-                url=url,
-                timeout=timeout,
-                debug_cb=debug_cb,
-            )
-        except ValueError as exc:
-            _err.print(f"[red]Error:[/red] {exc}")
-            raise typer.Exit(code=1)
-        _err.print(Rule(style="dim"))
+        with _DebugDisplay(_err, domain) as display:
+            try:
+                report = assess(
+                    domain,
+                    mode=mode,
+                    wordlist=wordlist,
+                    url=url,
+                    timeout=timeout,
+                    debug_cb=display.add_line,
+                )
+            except ValueError as exc:
+                _err.print(f"[red]Error:[/red] {exc}")
+                raise typer.Exit(code=1)
     else:
         with Progress(SpinnerColumn(), TextColumn("{task.description}"), console=_err) as progress:
             task = progress.add_task(f"Enumerating {domain}…", total=None)
@@ -222,22 +298,6 @@ def info() -> None:
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
-
-
-def _make_debug_cb(debug_console: Console) -> Callable[[str, str], None]:
-    """Return a callback that prints coloured debug lines per source.
-
-    :param debug_console: :class:`~rich.console.Console` to write debug output to.
-    :returns: A ``(source, line)`` callable for use as ``debug_cb`` in :func:`assess`.
-    """
-
-    def cb(source: str, line: str) -> None:
-        colour = _DEBUG_COLOURS.get(source, "white")
-        debug_console.print(
-            f"  [dim]│[/dim] [{colour}]{source:<14}[/{colour}] [dim]›[/dim] {line}"
-        )
-
-    return cb
 
 
 def _print_json(report) -> None:

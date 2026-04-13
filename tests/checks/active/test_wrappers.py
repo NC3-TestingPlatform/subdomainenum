@@ -34,22 +34,24 @@ def _mock_run_tool(output: list[str]) -> patch:
 class TestRunSubfinder:
     def test_returns_source_result(self) -> None:
         with patch("subdomainenum.checks.active.subfinder.run_tool", return_value=["sub.example.com"]):
-            result = run_subfinder("example.com", passive=True)
+            result = run_subfinder("example.com")
         assert isinstance(result, SourceResult)
         assert result.name == "subfinder"
 
-    def test_passive_flag_true(self) -> None:
+    def test_command_contains_domain_and_silent(self) -> None:
         with patch("subdomainenum.checks.active.subfinder.run_tool", return_value=[]) as mock:
-            run_subfinder("example.com", passive=True)
+            run_subfinder("example.com")
             cmd = mock.call_args[0][0]
-        assert "-passive" in cmd or "--passive" in cmd
+        assert "example.com" in cmd
+        assert "-silent" in cmd
+        assert "-passive" not in cmd
 
     def test_tool_missing_sets_available_false(self) -> None:
         with patch(
             "subdomainenum.checks.active.subfinder.run_tool",
             side_effect=RuntimeError("subfinder not found"),
         ):
-            result = run_subfinder("example.com", passive=True)
+            result = run_subfinder("example.com")
         assert result.available is False
         assert result.error is not None
 
@@ -58,7 +60,7 @@ class TestRunSubfinder:
             "subdomainenum.checks.active.subfinder.run_tool",
             return_value=["a.example.com", "b.example.com"],
         ):
-            result = run_subfinder("example.com", passive=True)
+            result = run_subfinder("example.com")
         assert "a.example.com" in result.subdomains
 
 

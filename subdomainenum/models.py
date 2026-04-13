@@ -35,7 +35,7 @@ class Status(str, Enum):
 class EnumMode(str, Enum):
     """Enumeration strategy mode.
 
-    - ``passive`` – only passive sources (crt.sh, SAN probe, subfinder --passive, amass --passive, …).
+    - ``passive`` – only passive sources (crt.sh, SAN probe, subfinder, amass --passive, …).
     - ``active``  – only active sources (dnsrecon brute-force, gobuster dns, wfuzz vhost fuzzing).
     - ``all``     – run both passive and active sources.
     """

@@ -75,7 +75,7 @@ tests/
 | DNS resolution | `dns_utils.py` | `dns.resolver.Resolver.resolve` |
 
 ### EnumMode behaviour
-- `passive` — crt.sh, SAN, subfinder (passive flag), amass (passive), findomain, assetfinder
+- `passive` — crt.sh, SAN, subfinder, amass (passive), findomain, assetfinder
 - `active` — dnsrecon, gobuster dns (require `--wordlist`); wfuzz only when `--url` provided
 - `all` — both passive and active
 
@@ -100,7 +100,11 @@ tests/
 4. Write tests in `tests/checks/active/test_wrappers.py` (or a new file)
 
 ## Debug Mode
-`--debug` streams each tool's raw output to stderr in real time, colour-coded by source.
+`--debug` streams each tool's raw output to stderr in real time using a `rich.live.Live`
+display. Each source gets its own coloured `Panel`; panels are stacked vertically and
+refresh up to 10×/s. Each panel keeps at most `_MAX_DEBUG_LINES` (20) lines via a
+`collections.deque`. The `_DebugDisplay` class in `cli.py` owns this logic and is
+thread-safe (passive sources run concurrently via `ThreadPoolExecutor`).
 The colour map lives in `_DEBUG_COLOURS` in `cli.py`. Add new sources there when adding checks.
 
 ## JSON / Output flags

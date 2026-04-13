@@ -141,7 +141,7 @@ class TestRunPassive:
         """Cover the lambda body in _line_cb by having a mock call line_cb."""
         debug_calls: list[tuple] = []
 
-        def fake_subfinder(domain, *, passive, line_cb=None, **kwargs):
+        def fake_subfinder(domain, *, line_cb=None, **kwargs):
             if line_cb:
                 line_cb("sub.example.com")
             return _make_source()

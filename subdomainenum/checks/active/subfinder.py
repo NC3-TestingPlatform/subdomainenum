@@ -11,22 +11,18 @@ from subdomainenum.models import SourceResult
 def run_subfinder(
     domain: str,
     *,
-    passive: bool = True,
     timeout: int = 120,
     line_cb: Callable[[str], None] | None = None,
 ) -> SourceResult:
     """Run subfinder for *domain* and return a :class:`~subdomainenum.models.SourceResult`.
 
     :param domain: Target base domain.
-    :param passive: When ``True``, passes ``-passive`` to restrict to passive APIs.
     :param timeout: Maximum seconds to wait for subfinder.
     :param line_cb: Optional callback invoked with each output line (for debug mode).
     :rtype: SourceResult
     """
     result = SourceResult(name="subfinder")
     cmd = ["subfinder", "-d", domain, "-silent"]
-    if passive:
-        cmd.append("-passive")
     try:
         lines = run_tool(cmd, timeout=timeout, line_cb=line_cb)
     except RuntimeError as exc:

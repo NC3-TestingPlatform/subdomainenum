@@ -68,7 +68,7 @@ def _run_passive(
 
     def _run_subfinder() -> SourceResult:
         _cb("Running subfinder (passive)…")
-        return run_subfinder(domain, passive=True, line_cb=_line_cb("subfinder"))
+        return run_subfinder(domain, line_cb=_line_cb("subfinder"))
 
     def _run_amass() -> SourceResult:
         _cb("Running amass (passive)…")
