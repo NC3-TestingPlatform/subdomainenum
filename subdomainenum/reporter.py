@@ -46,7 +46,6 @@ def to_dict(report: EnumReport) -> dict:
             {
                 "vhost": v.vhost,
                 "status_code": v.status_code,
-                "ip": v.ip,
                 "content_length": v.content_length,
             }
             for v in report.vhosts
@@ -118,10 +117,10 @@ def print_report(report: EnumReport, *, console: Console | None = None) -> None:
 
     # Vhosts table
     if report.vhosts:
-        con.print("\n[bold]Virtual Hosts (wfuzz)[/bold]")
-        vh_table = Table("Host", "Status Code", "Content-Length", "IP", box=box.SIMPLE_HEAD)
+        con.print("\n[bold]Virtual Hosts (ffuf)[/bold]")
+        vh_table = Table("Host", "Status Code", "Content-Length", box=box.SIMPLE_HEAD)
         for v in report.vhosts:
-            vh_table.add_row(v.vhost, str(v.status_code), str(v.content_length), v.ip or "—")
+            vh_table.add_row(v.vhost, str(v.status_code), str(v.content_length))
         con.print(vh_table)
 
     # Sources summary table

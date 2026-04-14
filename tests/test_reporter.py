@@ -20,7 +20,7 @@ def _make_report() -> EnumReport:
             SubdomainResult(fqdn="dead.example.com", status=Status.DEAD, alive=False),
         ],
         vhosts=[
-            VhostResult(vhost="admin.example.com", status_code=200, ip="1.2.3.4", content_length=512),
+            VhostResult(vhost="admin.example.com", status_code=200, content_length=512),
         ],
         sources=[
             SourceResult(name="crt.sh", subdomains=["sub.example.com"], available=True),

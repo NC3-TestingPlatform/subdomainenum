@@ -85,17 +85,14 @@ class TestVhostResult:
         v = VhostResult(vhost="admin.example.com", status_code=200)
         assert v.vhost == "admin.example.com"
         assert v.status_code == 200
-        assert v.ip == ""
         assert v.content_length == 0
 
     def test_full_construction(self) -> None:
         v = VhostResult(
             vhost="admin.example.com",
             status_code=301,
-            ip="10.0.0.1",
             content_length=1024,
         )
-        assert v.ip == "10.0.0.1"
         assert v.content_length == 1024
 
 

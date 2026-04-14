@@ -66,17 +66,15 @@ class SubdomainResult:
 
 @dataclass
 class VhostResult:
-    """A virtual host discovered via HTTP fuzzing (wfuzz).
+    """A virtual host discovered via HTTP fuzzing (ffuf).
 
     :param vhost: The Host header value used (e.g. ``"admin.example.com"``).
     :param status_code: HTTP response status code.
-    :param ip: Target IP address that was probed.
     :param content_length: Response body length in bytes.
     """
 
     vhost: str
     status_code: int
-    ip: str = ""
     content_length: int = 0
 
 
