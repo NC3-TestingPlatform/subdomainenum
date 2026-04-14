@@ -10,6 +10,8 @@ from subdomainenum.models import EnumMode, SourceResult
 
 # amass v4 outputs relationship lines: "<entity> (<type>) --> <relation> --> <entity> (<type>)"
 _AMASS_FQDN_RE = re.compile(r"^(\S+)\s+\(FQDN\)\s+-->")
+# Strip ANSI terminal escape sequences that some amass builds emit in certain environments.
+_ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*m")
 
 
 def _parse_amass_output(lines: list[str], domain: str) -> list[str]:
@@ -32,7 +34,8 @@ def _parse_amass_output(lines: list[str], domain: str) -> list[str]:
     seen: set[str] = set()
     results: list[str] = []
     for line in lines:
-        match = _AMASS_FQDN_RE.match(line)
+        clean = _ANSI_ESCAPE_RE.sub("", line)
+        match = _AMASS_FQDN_RE.match(clean)
         if not match:
             continue
         fqdn = match.group(1).lower()

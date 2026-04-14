@@ -66,6 +66,36 @@ class TestRunTool:
             lines = run_tool(["tool"], timeout=0)  # zero timeout → instant
         assert lines == []
 
+    def test_timeout_returns_lines_collected_before_kill(self) -> None:
+        """Partial lines collected before the timeout are returned, not discarded."""
+        import threading
+
+        def _slow_popen(*args, **kwargs):
+            mock_proc = MagicMock()
+            event = threading.Event()
+
+            class _PartialStream:
+                def __iter__(self):
+                    # Yield some lines, then block indefinitely until killed.
+                    yield "early.example.com\n"
+                    yield "another.example.com\n"
+                    event.wait()  # hangs until proc.kill() sets the event
+                    return
+
+                def close(self):
+                    event.set()
+
+            mock_proc.stdout = _PartialStream()
+            mock_proc.returncode = -9
+            mock_proc.wait.return_value = -9
+            mock_proc.kill.side_effect = lambda: event.set()
+            return mock_proc
+
+        with patch("subprocess.Popen", side_effect=_slow_popen):
+            lines = run_tool(["tool"], timeout=0)  # expire immediately
+        assert "early.example.com" in lines
+        assert "another.example.com" in lines
+
     def test_strips_blank_lines(self) -> None:
         with patch("subprocess.Popen", return_value=_make_popen("sub.example.com\n\n  \nsub2.example.com\n")):
             lines = run_tool(["subfinder"], timeout=30)

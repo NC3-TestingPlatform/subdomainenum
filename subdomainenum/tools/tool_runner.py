@@ -20,7 +20,7 @@ def run_tool(
 
     :param cmd: Command and arguments to execute.
     :param timeout: Maximum seconds to wait for the process.  On timeout,
-        an empty list is returned rather than raising.
+        any lines already collected are returned (partial results) rather than raising.
     :param line_cb: Optional callback invoked with each non-empty line as it
         arrives from the process's output (useful for real-time debug output).
     :param cmd_cb: Optional callback invoked once with the full command string
@@ -68,7 +68,8 @@ def run_tool(
         proc.kill()
         if proc.stdout:
             proc.stdout.close()
-        return []
+        reader.join(2)  # let reader drain after process death (EOF arrives quickly)
+        return list(lines)  # return partial results collected before the timeout
 
     proc.wait()
 

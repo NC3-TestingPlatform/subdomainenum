@@ -130,6 +130,12 @@ class TestParseAmassOutput:
         result = _parse_amass_output(lines, "example.com")
         assert result == ["a.example.com", "b.example.com"]
 
+    def test_strips_ansi_codes(self) -> None:
+        """ANSI escape sequences in amass output must not corrupt the FQDN capture."""
+        lines = ["\x1b[32msub.example.com\x1b[0m (FQDN) --> a_record --> 1.2.3.4 (IPAddress)"]
+        result = _parse_amass_output(lines, "example.com")
+        assert result == ["sub.example.com"]
+
 
 class TestRunAmass:
     def test_returns_source_result(self) -> None:
