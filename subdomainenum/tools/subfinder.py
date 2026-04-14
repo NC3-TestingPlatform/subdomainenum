@@ -26,11 +26,12 @@ def run_subfinder(
     result = SourceResult(name="subfinder")
     cmd = ["subfinder", "-d", domain, "-silent", "-all"]
     try:
-        lines = run_tool(cmd, timeout=timeout, line_cb=line_cb, cmd_cb=cmd_cb)
+        lines, timed_out = run_tool(cmd, timeout=timeout, line_cb=line_cb, cmd_cb=cmd_cb)
     except RuntimeError as exc:
         result.available = False
         result.error = str(exc)
         return result
 
     result.subdomains = lines
+    result.timed_out = timed_out
     return result

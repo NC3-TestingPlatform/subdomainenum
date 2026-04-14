@@ -69,11 +69,12 @@ def run_amass(
     if mode in (EnumMode.ACTIVE, EnumMode.ALL):
         cmd.append("-active")
     try:
-        lines = run_tool(cmd, timeout=timeout, line_cb=line_cb, cmd_cb=cmd_cb, ignore_returncode=True)
+        lines, timed_out = run_tool(cmd, timeout=timeout, line_cb=line_cb, cmd_cb=cmd_cb, ignore_returncode=True)
     except RuntimeError as exc:
         result.available = False
         result.error = str(exc)
         return result
 
     result.subdomains = _parse_amass_output(lines, domain)
+    result.timed_out = timed_out
     return result

@@ -92,6 +92,7 @@ class SourceResult:
     subdomains: list[str] = field(default_factory=list)
     error: str | None = None
     available: bool = True
+    timed_out: bool = False
 
 
 @dataclass

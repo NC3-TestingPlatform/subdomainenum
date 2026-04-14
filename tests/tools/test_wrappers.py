@@ -24,7 +24,7 @@ from subdomainenum.models import EnumMode, SourceResult, VhostResult
 
 
 def _mock_run_tool(output: list[str]) -> patch:
-    return patch("subdomainenum.tools.tool_runner.run_tool", return_value=output)
+    return patch("subdomainenum.tools.tool_runner.run_tool", return_value=(output, False))
 
 
 # ---------------------------------------------------------------------------
@@ -34,13 +34,13 @@ def _mock_run_tool(output: list[str]) -> patch:
 
 class TestRunSubfinder:
     def test_returns_source_result(self) -> None:
-        with patch("subdomainenum.tools.subfinder.run_tool", return_value=["sub.example.com"]):
+        with patch("subdomainenum.tools.subfinder.run_tool", return_value=(["sub.example.com"], False)):
             result = run_subfinder("example.com")
         assert isinstance(result, SourceResult)
         assert result.name == "subfinder"
 
     def test_command_contains_domain_and_silent(self) -> None:
-        with patch("subdomainenum.tools.subfinder.run_tool", return_value=[]) as mock:
+        with patch("subdomainenum.tools.subfinder.run_tool", return_value=([], False)) as mock:
             run_subfinder("example.com")
             cmd = mock.call_args[0][0]
         assert "example.com" in cmd
@@ -60,7 +60,7 @@ class TestRunSubfinder:
     def test_parses_subdomains(self) -> None:
         with patch(
             "subdomainenum.tools.subfinder.run_tool",
-            return_value=["a.example.com", "b.example.com"],
+            return_value=(["a.example.com", "b.example.com"], False),
         ):
             result = run_subfinder("example.com")
         assert "a.example.com" in result.subdomains
@@ -68,9 +68,25 @@ class TestRunSubfinder:
     def test_cmd_cb_passed_to_run_tool(self) -> None:
         def cb(cmd: str) -> None:
             pass
-        with patch("subdomainenum.tools.subfinder.run_tool", return_value=[]) as mock:
+        with patch("subdomainenum.tools.subfinder.run_tool", return_value=([], False)) as mock:
             run_subfinder("example.com", cmd_cb=cb)
         assert mock.call_args.kwargs.get("cmd_cb") is cb
+
+    def test_timed_out_sets_timed_out_flag(self) -> None:
+        with patch(
+            "subdomainenum.tools.subfinder.run_tool",
+            return_value=(["partial.example.com"], True),
+        ):
+            result = run_subfinder("example.com")
+        assert result.timed_out is True
+
+    def test_normal_completion_timed_out_false(self) -> None:
+        with patch(
+            "subdomainenum.tools.subfinder.run_tool",
+            return_value=(["sub.example.com"], False),
+        ):
+            result = run_subfinder("example.com")
+        assert result.timed_out is False
 
 
 # ---------------------------------------------------------------------------
@@ -139,13 +155,13 @@ class TestParseAmassOutput:
 
 class TestRunAmass:
     def test_returns_source_result(self) -> None:
-        with patch("subdomainenum.tools.amass.run_tool", return_value=[]):
+        with patch("subdomainenum.tools.amass.run_tool", return_value=([], False)):
             result = run_amass("example.com")
         assert isinstance(result, SourceResult)
         assert result.name == "amass"
 
     def test_command_contains_enum_and_domain(self) -> None:
-        with patch("subdomainenum.tools.amass.run_tool", return_value=[]) as mock:
+        with patch("subdomainenum.tools.amass.run_tool", return_value=([], False)) as mock:
             run_amass("example.com")
             cmd = mock.call_args[0][0]
         assert "enum" in cmd
@@ -168,7 +184,7 @@ class TestRunAmass:
             "example.com (FQDN) --> ns_record --> ns1.eurodns.com (FQDN)",
             "ns1.eurodns.com (FQDN) --> a_record --> 5.6.7.8 (IPAddress)",
         ]
-        with patch("subdomainenum.tools.amass.run_tool", return_value=graph_lines):
+        with patch("subdomainenum.tools.amass.run_tool", return_value=(graph_lines, False)):
             result = run_amass("example.com")
         assert "sub.example.com" in result.subdomains
         assert "example.com" in result.subdomains
@@ -177,33 +193,44 @@ class TestRunAmass:
     def test_cmd_cb_passed_to_run_tool(self) -> None:
         def cb(cmd: str) -> None:
             pass
-        with patch("subdomainenum.tools.amass.run_tool", return_value=[]) as mock:
+        with patch("subdomainenum.tools.amass.run_tool", return_value=([], False)) as mock:
             run_amass("example.com", cmd_cb=cb)
         assert mock.call_args.kwargs.get("cmd_cb") is cb
 
     def test_ignore_returncode_is_true(self) -> None:
         """amass exits non-zero on partial failures; results must still be parsed."""
-        with patch("subdomainenum.tools.amass.run_tool", return_value=[]) as mock:
+        with patch("subdomainenum.tools.amass.run_tool", return_value=([], False)) as mock:
             run_amass("example.com")
         assert mock.call_args.kwargs.get("ignore_returncode") is True
 
     def test_no_active_flag_in_passive_mode(self) -> None:
-        with patch("subdomainenum.tools.amass.run_tool", return_value=[]) as mock:
+        with patch("subdomainenum.tools.amass.run_tool", return_value=([], False)) as mock:
             run_amass("example.com", mode=EnumMode.PASSIVE)
             cmd = mock.call_args[0][0]
         assert "-active" not in cmd
 
     def test_active_flag_in_active_mode(self) -> None:
-        with patch("subdomainenum.tools.amass.run_tool", return_value=[]) as mock:
+        with patch("subdomainenum.tools.amass.run_tool", return_value=([], False)) as mock:
             run_amass("example.com", mode=EnumMode.ACTIVE)
             cmd = mock.call_args[0][0]
         assert "-active" in cmd
 
     def test_active_flag_in_all_mode(self) -> None:
-        with patch("subdomainenum.tools.amass.run_tool", return_value=[]) as mock:
+        with patch("subdomainenum.tools.amass.run_tool", return_value=([], False)) as mock:
             run_amass("example.com", mode=EnumMode.ALL)
             cmd = mock.call_args[0][0]
         assert "-active" in cmd
+
+    def test_timed_out_sets_timed_out_flag(self) -> None:
+        graph_lines = ["partial.example.com (FQDN) --> a_record --> 1.2.3.4 (IPAddress)"]
+        with patch("subdomainenum.tools.amass.run_tool", return_value=(graph_lines, True)):
+            result = run_amass("example.com")
+        assert result.timed_out is True
+
+    def test_normal_completion_timed_out_false(self) -> None:
+        with patch("subdomainenum.tools.amass.run_tool", return_value=([], False)):
+            result = run_amass("example.com")
+        assert result.timed_out is False
 
 
 # ---------------------------------------------------------------------------
@@ -213,7 +240,7 @@ class TestRunAmass:
 
 class TestRunFindomain:
     def test_returns_source_result(self) -> None:
-        with patch("subdomainenum.tools.findomain.run_tool", return_value=[]):
+        with patch("subdomainenum.tools.findomain.run_tool", return_value=([], False)):
             result = run_findomain("example.com")
         assert isinstance(result, SourceResult)
         assert result.name == "findomain"
@@ -229,9 +256,25 @@ class TestRunFindomain:
     def test_cmd_cb_passed_to_run_tool(self) -> None:
         def cb(cmd: str) -> None:
             pass
-        with patch("subdomainenum.tools.findomain.run_tool", return_value=[]) as mock:
+        with patch("subdomainenum.tools.findomain.run_tool", return_value=([], False)) as mock:
             run_findomain("example.com", cmd_cb=cb)
         assert mock.call_args.kwargs.get("cmd_cb") is cb
+
+    def test_timed_out_sets_timed_out_flag(self) -> None:
+        with patch(
+            "subdomainenum.tools.findomain.run_tool",
+            return_value=(["partial.example.com"], True),
+        ):
+            result = run_findomain("example.com")
+        assert result.timed_out is True
+
+    def test_normal_completion_timed_out_false(self) -> None:
+        with patch(
+            "subdomainenum.tools.findomain.run_tool",
+            return_value=(["sub.example.com"], False),
+        ):
+            result = run_findomain("example.com")
+        assert result.timed_out is False
 
 
 # ---------------------------------------------------------------------------
@@ -241,7 +284,7 @@ class TestRunFindomain:
 
 class TestRunAssetfinder:
     def test_returns_source_result(self) -> None:
-        with patch("subdomainenum.tools.assetfinder.run_tool", return_value=[]):
+        with patch("subdomainenum.tools.assetfinder.run_tool", return_value=([], False)):
             result = run_assetfinder("example.com")
         assert isinstance(result, SourceResult)
         assert result.name == "assetfinder"
@@ -257,9 +300,25 @@ class TestRunAssetfinder:
     def test_cmd_cb_passed_to_run_tool(self) -> None:
         def cb(cmd: str) -> None:
             pass
-        with patch("subdomainenum.tools.assetfinder.run_tool", return_value=[]) as mock:
+        with patch("subdomainenum.tools.assetfinder.run_tool", return_value=([], False)) as mock:
             run_assetfinder("example.com", cmd_cb=cb)
         assert mock.call_args.kwargs.get("cmd_cb") is cb
+
+    def test_timed_out_sets_timed_out_flag(self) -> None:
+        with patch(
+            "subdomainenum.tools.assetfinder.run_tool",
+            return_value=(["partial.example.com"], True),
+        ):
+            result = run_assetfinder("example.com")
+        assert result.timed_out is True
+
+    def test_normal_completion_timed_out_false(self) -> None:
+        with patch(
+            "subdomainenum.tools.assetfinder.run_tool",
+            return_value=(["sub.example.com"], False),
+        ):
+            result = run_assetfinder("example.com")
+        assert result.timed_out is False
 
 
 # ---------------------------------------------------------------------------
@@ -269,18 +328,18 @@ class TestRunAssetfinder:
 
 class TestRunDnsrecon:
     def test_returns_source_result(self) -> None:
-        with patch("subdomainenum.tools.dnsrecon.run_tool", return_value=[]):
+        with patch("subdomainenum.tools.dnsrecon.run_tool", return_value=([], False)):
             result = run_dnsrecon("example.com", mode=EnumMode.ALL, wordlist="/tmp/words.txt")
         assert isinstance(result, SourceResult)
         assert result.name == "dnsrecon"
 
     def test_single_invocation(self) -> None:
-        with patch("subdomainenum.tools.dnsrecon.run_tool", return_value=[]) as mock:
+        with patch("subdomainenum.tools.dnsrecon.run_tool", return_value=([], False)) as mock:
             run_dnsrecon("example.com", mode=EnumMode.ALL, wordlist="/tmp/words.txt")
         assert mock.call_count == 1
 
     def test_all_mode_uses_std_srv_and_brt_types(self) -> None:
-        with patch("subdomainenum.tools.dnsrecon.run_tool", return_value=[]) as mock:
+        with patch("subdomainenum.tools.dnsrecon.run_tool", return_value=([], False)) as mock:
             run_dnsrecon("example.com", mode=EnumMode.ALL, wordlist="/tmp/words.txt")
             cmd = mock.call_args[0][0]
         type_val = cmd[cmd.index("-t") + 1]
@@ -289,21 +348,21 @@ class TestRunDnsrecon:
         assert "brt" in type_val
 
     def test_all_mode_includes_passive_and_active_flags(self) -> None:
-        with patch("subdomainenum.tools.dnsrecon.run_tool", return_value=[]) as mock:
+        with patch("subdomainenum.tools.dnsrecon.run_tool", return_value=([], False)) as mock:
             run_dnsrecon("example.com", mode=EnumMode.ALL, wordlist="/tmp/words.txt")
             cmd = mock.call_args[0][0]
         for flag in ("-a", "-b", "-y", "-k", "-z"):
             assert flag in cmd, f"expected {flag} in command"
 
     def test_all_mode_wordlist_in_command(self) -> None:
-        with patch("subdomainenum.tools.dnsrecon.run_tool", return_value=[]) as mock:
+        with patch("subdomainenum.tools.dnsrecon.run_tool", return_value=([], False)) as mock:
             run_dnsrecon("example.com", mode=EnumMode.ALL, wordlist="/tmp/subdomains.txt")
             cmd = mock.call_args[0][0]
         assert "-D" in cmd
         assert "/tmp/subdomains.txt" in cmd
 
     def test_passive_mode_uses_std_and_srv_types(self) -> None:
-        with patch("subdomainenum.tools.dnsrecon.run_tool", return_value=[]) as mock:
+        with patch("subdomainenum.tools.dnsrecon.run_tool", return_value=([], False)) as mock:
             run_dnsrecon("example.com", mode=EnumMode.PASSIVE)
             cmd = mock.call_args[0][0]
         type_val = cmd[cmd.index("-t") + 1]
@@ -312,14 +371,14 @@ class TestRunDnsrecon:
         assert "brt" not in type_val
 
     def test_passive_mode_includes_passive_flags(self) -> None:
-        with patch("subdomainenum.tools.dnsrecon.run_tool", return_value=[]) as mock:
+        with patch("subdomainenum.tools.dnsrecon.run_tool", return_value=([], False)) as mock:
             run_dnsrecon("example.com", mode=EnumMode.PASSIVE)
             cmd = mock.call_args[0][0]
         for flag in ("-b", "-y", "-k"):
             assert flag in cmd, f"expected {flag} in passive command"
 
     def test_passive_mode_excludes_active_flags(self) -> None:
-        with patch("subdomainenum.tools.dnsrecon.run_tool", return_value=[]) as mock:
+        with patch("subdomainenum.tools.dnsrecon.run_tool", return_value=([], False)) as mock:
             run_dnsrecon("example.com", mode=EnumMode.PASSIVE)
             cmd = mock.call_args[0][0]
         assert "-a" not in cmd
@@ -327,7 +386,7 @@ class TestRunDnsrecon:
         assert "-D" not in cmd
 
     def test_active_mode_uses_brt_type(self) -> None:
-        with patch("subdomainenum.tools.dnsrecon.run_tool", return_value=[]) as mock:
+        with patch("subdomainenum.tools.dnsrecon.run_tool", return_value=([], False)) as mock:
             run_dnsrecon("example.com", mode=EnumMode.ACTIVE, wordlist="/tmp/words.txt")
             cmd = mock.call_args[0][0]
         type_val = cmd[cmd.index("-t") + 1]
@@ -335,7 +394,7 @@ class TestRunDnsrecon:
         assert "std" not in type_val
 
     def test_active_mode_includes_active_flags_and_wordlist(self) -> None:
-        with patch("subdomainenum.tools.dnsrecon.run_tool", return_value=[]) as mock:
+        with patch("subdomainenum.tools.dnsrecon.run_tool", return_value=([], False)) as mock:
             run_dnsrecon("example.com", mode=EnumMode.ACTIVE, wordlist="/tmp/words.txt")
             cmd = mock.call_args[0][0]
         assert "-a" in cmd
@@ -344,7 +403,7 @@ class TestRunDnsrecon:
         assert "/tmp/words.txt" in cmd
 
     def test_active_mode_excludes_passive_flags(self) -> None:
-        with patch("subdomainenum.tools.dnsrecon.run_tool", return_value=[]) as mock:
+        with patch("subdomainenum.tools.dnsrecon.run_tool", return_value=([], False)) as mock:
             run_dnsrecon("example.com", mode=EnumMode.ACTIVE, wordlist="/tmp/words.txt")
             cmd = mock.call_args[0][0]
         assert "-b" not in cmd
@@ -362,20 +421,20 @@ class TestRunDnsrecon:
     def test_parses_logging_format_output(self) -> None:
         """dnsrecon writes via Python logging (to stderr); parse the timestamped format."""
         output = ["2026-04-13T11:10:38.863437-0400 INFO      A sub.example.com 1.2.3.4"]
-        with patch("subdomainenum.tools.dnsrecon.run_tool", return_value=output):
+        with patch("subdomainenum.tools.dnsrecon.run_tool", return_value=(output, False)):
             result = run_dnsrecon("example.com", mode=EnumMode.ACTIVE, wordlist="/tmp/w.txt")
         assert "sub.example.com" in result.subdomains
 
     def test_parses_cname_logging_format(self) -> None:
         """CNAME lines in logging format are also parsed correctly."""
         output = ["2026-04-13T11:10:40.252299-0400 INFO      CNAME cr.example.com alias.example.com"]
-        with patch("subdomainenum.tools.dnsrecon.run_tool", return_value=output):
+        with patch("subdomainenum.tools.dnsrecon.run_tool", return_value=(output, False)):
             result = run_dnsrecon("example.com", mode=EnumMode.ACTIVE, wordlist="/tmp/w.txt")
         assert "cr.example.com" in result.subdomains
 
     def test_parses_output_lines(self) -> None:
         output = ["[*] A sub.example.com 1.2.3.4"]
-        with patch("subdomainenum.tools.dnsrecon.run_tool", return_value=output):
+        with patch("subdomainenum.tools.dnsrecon.run_tool", return_value=(output, False)):
             result = run_dnsrecon("example.com", mode=EnumMode.PASSIVE)
         assert "sub.example.com" in result.subdomains
 
@@ -384,28 +443,39 @@ class TestRunDnsrecon:
             "[*] A dup.example.com 1.1.1.1",
             "[*] AAAA dup.example.com ::1",
         ]
-        with patch("subdomainenum.tools.dnsrecon.run_tool", return_value=output):
+        with patch("subdomainenum.tools.dnsrecon.run_tool", return_value=(output, False)):
             result = run_dnsrecon("example.com", mode=EnumMode.PASSIVE)
         assert result.subdomains.count("dup.example.com") == 1
 
     def test_uses_capture_stderr(self) -> None:
         """dnsrecon must capture stderr because it logs via Python logging module."""
-        with patch("subdomainenum.tools.dnsrecon.run_tool", return_value=[]) as mock:
+        with patch("subdomainenum.tools.dnsrecon.run_tool", return_value=([], False)) as mock:
             run_dnsrecon("example.com", mode=EnumMode.PASSIVE)
         assert mock.call_args.kwargs.get("capture_stderr") is True
 
     def test_uses_ignore_returncode(self) -> None:
         """dnsrecon must ignore non-zero exit codes (AXFR refusal etc.)."""
-        with patch("subdomainenum.tools.dnsrecon.run_tool", return_value=[]) as mock:
+        with patch("subdomainenum.tools.dnsrecon.run_tool", return_value=([], False)) as mock:
             run_dnsrecon("example.com", mode=EnumMode.PASSIVE)
         assert mock.call_args.kwargs.get("ignore_returncode") is True
 
     def test_cmd_cb_passed_to_run_tool(self) -> None:
         def cb(cmd: str) -> None:
             pass
-        with patch("subdomainenum.tools.dnsrecon.run_tool", return_value=[]) as mock:
+        with patch("subdomainenum.tools.dnsrecon.run_tool", return_value=([], False)) as mock:
             run_dnsrecon("example.com", mode=EnumMode.PASSIVE, cmd_cb=cb)
         assert mock.call_args.kwargs.get("cmd_cb") is cb
+
+    def test_timed_out_sets_timed_out_flag(self) -> None:
+        output = ["[*] A partial.example.com 1.2.3.4"]
+        with patch("subdomainenum.tools.dnsrecon.run_tool", return_value=(output, True)):
+            result = run_dnsrecon("example.com", mode=EnumMode.PASSIVE)
+        assert result.timed_out is True
+
+    def test_normal_completion_timed_out_false(self) -> None:
+        with patch("subdomainenum.tools.dnsrecon.run_tool", return_value=([], False)):
+            result = run_dnsrecon("example.com", mode=EnumMode.PASSIVE)
+        assert result.timed_out is False
 
 
 # ---------------------------------------------------------------------------
@@ -415,13 +485,13 @@ class TestRunDnsrecon:
 
 class TestRunGobusterDns:
     def test_returns_source_result(self) -> None:
-        with patch("subdomainenum.tools.gobuster_dns.run_tool", return_value=[]):
+        with patch("subdomainenum.tools.gobuster_dns.run_tool", return_value=([], False)):
             result = run_gobuster_dns("example.com", wordlist="/tmp/words.txt")
         assert isinstance(result, SourceResult)
         assert result.name == "gobuster"
 
     def test_wordlist_in_command(self) -> None:
-        with patch("subdomainenum.tools.gobuster_dns.run_tool", return_value=[]) as mock:
+        with patch("subdomainenum.tools.gobuster_dns.run_tool", return_value=([], False)) as mock:
             run_gobuster_dns("example.com", wordlist="/tmp/dns.txt")
             cmd = mock.call_args[0][0]
         assert "/tmp/dns.txt" in cmd
@@ -436,16 +506,27 @@ class TestRunGobusterDns:
 
     def test_parses_found_lines(self) -> None:
         output = ["Found: sub.example.com"]
-        with patch("subdomainenum.tools.gobuster_dns.run_tool", return_value=output):
+        with patch("subdomainenum.tools.gobuster_dns.run_tool", return_value=(output, False)):
             result = run_gobuster_dns("example.com", wordlist="/tmp/w.txt")
         assert "sub.example.com" in result.subdomains
 
     def test_cmd_cb_passed_to_run_tool(self) -> None:
         def cb(cmd: str) -> None:
             pass
-        with patch("subdomainenum.tools.gobuster_dns.run_tool", return_value=[]) as mock:
+        with patch("subdomainenum.tools.gobuster_dns.run_tool", return_value=([], False)) as mock:
             run_gobuster_dns("example.com", wordlist="/tmp/w.txt", cmd_cb=cb)
         assert mock.call_args.kwargs.get("cmd_cb") is cb
+
+    def test_timed_out_sets_timed_out_flag(self) -> None:
+        output = ["Found: partial.example.com"]
+        with patch("subdomainenum.tools.gobuster_dns.run_tool", return_value=(output, True)):
+            result = run_gobuster_dns("example.com", wordlist="/tmp/w.txt")
+        assert result.timed_out is True
+
+    def test_normal_completion_timed_out_false(self) -> None:
+        with patch("subdomainenum.tools.gobuster_dns.run_tool", return_value=([], False)):
+            result = run_gobuster_dns("example.com", wordlist="/tmp/w.txt")
+        assert result.timed_out is False
 
 
 # ---------------------------------------------------------------------------
@@ -516,7 +597,7 @@ class TestRunFfuf:
         assert results == []
 
     def test_wordlist_in_command(self) -> None:
-        with patch("subdomainenum.tools.ffuf.run_tool", return_value=[]) as mock, \
+        with patch("subdomainenum.tools.ffuf.run_tool", return_value=([], False)) as mock, \
              patch("subdomainenum.tools.ffuf.tempfile.NamedTemporaryFile", return_value=_make_mock_ntf()), \
              patch("builtins.open", mock_open(read_data="{}")), \
              patch("subdomainenum.tools.ffuf.os.unlink"):
@@ -525,7 +606,7 @@ class TestRunFfuf:
         assert "/tmp/vhosts.txt" in cmd
 
     def test_url_and_filter_codes_in_command(self) -> None:
-        with patch("subdomainenum.tools.ffuf.run_tool", return_value=[]) as mock, \
+        with patch("subdomainenum.tools.ffuf.run_tool", return_value=([], False)) as mock, \
              patch("subdomainenum.tools.ffuf.tempfile.NamedTemporaryFile", return_value=_make_mock_ntf()), \
              patch("builtins.open", mock_open(read_data="{}")), \
              patch("subdomainenum.tools.ffuf.os.unlink"):
@@ -537,7 +618,7 @@ class TestRunFfuf:
 
     def test_json_output_flags_in_command(self) -> None:
         """ffuf must use -of json -o <file> -s to write results to a file."""
-        with patch("subdomainenum.tools.ffuf.run_tool", return_value=[]) as mock, \
+        with patch("subdomainenum.tools.ffuf.run_tool", return_value=([], False)) as mock, \
              patch("subdomainenum.tools.ffuf.tempfile.NamedTemporaryFile", return_value=_make_mock_ntf("/tmp/out.json")), \
              patch("builtins.open", mock_open(read_data="{}")), \
              patch("subdomainenum.tools.ffuf.os.unlink"):
@@ -582,7 +663,7 @@ class TestRunFfuf:
     def test_cmd_cb_passed_to_run_tool(self) -> None:
         def cb(cmd: str) -> None:
             pass
-        with patch("subdomainenum.tools.ffuf.run_tool", return_value=[]) as mock, \
+        with patch("subdomainenum.tools.ffuf.run_tool", return_value=([], False)) as mock, \
              patch("subdomainenum.tools.ffuf.tempfile.NamedTemporaryFile", return_value=_make_mock_ntf()), \
              patch("builtins.open", mock_open(read_data="{}")), \
              patch("subdomainenum.tools.ffuf.os.unlink"):
@@ -590,7 +671,7 @@ class TestRunFfuf:
         assert mock.call_args.kwargs.get("cmd_cb") is cb
 
     def test_ignore_returncode_passed_to_run_tool(self) -> None:
-        with patch("subdomainenum.tools.ffuf.run_tool", return_value=[]) as mock, \
+        with patch("subdomainenum.tools.ffuf.run_tool", return_value=([], False)) as mock, \
              patch("subdomainenum.tools.ffuf.tempfile.NamedTemporaryFile", return_value=_make_mock_ntf()), \
              patch("builtins.open", mock_open(read_data="{}")), \
              patch("subdomainenum.tools.ffuf.os.unlink"):
@@ -598,7 +679,7 @@ class TestRunFfuf:
         assert mock.call_args.kwargs.get("ignore_returncode") is True
 
     def test_capture_stderr_passed_to_run_tool(self) -> None:
-        with patch("subdomainenum.tools.ffuf.run_tool", return_value=[]) as mock, \
+        with patch("subdomainenum.tools.ffuf.run_tool", return_value=([], False)) as mock, \
              patch("subdomainenum.tools.ffuf.tempfile.NamedTemporaryFile", return_value=_make_mock_ntf()), \
              patch("builtins.open", mock_open(read_data="{}")), \
              patch("subdomainenum.tools.ffuf.os.unlink"):

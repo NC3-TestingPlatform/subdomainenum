@@ -24,15 +24,17 @@ def _make_popen(stdout_text: str, returncode: int = 0) -> MagicMock:
 class TestRunTool:
     def test_returns_stdout_lines_on_success(self) -> None:
         with patch("subprocess.Popen", return_value=_make_popen("sub1.example.com\nsub2.example.com\n")) as mock_popen:
-            lines = run_tool(["subfinder", "-d", "example.com"], timeout=30)
+            lines, timed_out = run_tool(["subfinder", "-d", "example.com"], timeout=30)
         mock_popen.assert_called_once()
         assert "sub1.example.com" in lines
         assert "sub2.example.com" in lines
+        assert timed_out is False
 
     def test_returns_empty_list_on_nonzero_exit(self) -> None:
         with patch("subprocess.Popen", return_value=_make_popen("", returncode=1)):
-            lines = run_tool(["gobuster", "dns"], timeout=30)
+            lines, timed_out = run_tool(["gobuster", "dns"], timeout=30)
         assert lines == []
+        assert timed_out is False
 
     def test_raises_file_not_found_as_runtime_error(self) -> None:
         with patch("subprocess.Popen", side_effect=FileNotFoundError):
@@ -63,8 +65,9 @@ class TestRunTool:
             return mock_proc
 
         with patch("subprocess.Popen", side_effect=_slow_popen):
-            lines = run_tool(["tool"], timeout=0)  # zero timeout → instant
+            lines, timed_out = run_tool(["tool"], timeout=0)  # zero timeout → instant
         assert lines == []
+        assert timed_out is True
 
     def test_timeout_returns_lines_collected_before_kill(self) -> None:
         """Partial lines collected before the timeout are returned, not discarded."""
@@ -92,16 +95,18 @@ class TestRunTool:
             return mock_proc
 
         with patch("subprocess.Popen", side_effect=_slow_popen):
-            lines = run_tool(["tool"], timeout=0)  # expire immediately
+            lines, timed_out = run_tool(["tool"], timeout=0)  # expire immediately
         assert "early.example.com" in lines
         assert "another.example.com" in lines
+        assert timed_out is True
 
     def test_strips_blank_lines(self) -> None:
         with patch("subprocess.Popen", return_value=_make_popen("sub.example.com\n\n  \nsub2.example.com\n")):
-            lines = run_tool(["subfinder"], timeout=30)
+            lines, timed_out = run_tool(["subfinder"], timeout=30)
         assert "" not in lines
         assert "  " not in lines
         assert len(lines) == 2
+        assert timed_out is False
 
     def test_line_cb_called_for_each_line(self) -> None:
         collected: list[str] = []
@@ -119,8 +124,9 @@ class TestRunTool:
 
     def test_no_line_cb_still_returns_lines(self) -> None:
         with patch("subprocess.Popen", return_value=_make_popen("x.example.com\n")):
-            lines = run_tool(["tool"], timeout=30, line_cb=None)
+            lines, timed_out = run_tool(["tool"], timeout=30, line_cb=None)
         assert lines == ["x.example.com"]
+        assert timed_out is False
 
     def test_cmd_cb_called_once_before_popen(self) -> None:
         """cmd_cb must be invoked exactly once with the joined command string."""
@@ -132,8 +138,9 @@ class TestRunTool:
     def test_cmd_cb_not_called_when_none(self) -> None:
         """run_tool must not raise when cmd_cb is None (default path)."""
         with patch("subprocess.Popen", return_value=_make_popen("sub.example.com\n")):
-            lines = run_tool(["subfinder", "-d", "example.com"], timeout=30, cmd_cb=None)
+            lines, timed_out = run_tool(["subfinder", "-d", "example.com"], timeout=30, cmd_cb=None)
         assert lines == ["sub.example.com"]
+        assert timed_out is False
 
     def test_cmd_cb_receives_full_command_string(self) -> None:
         """Verify the exact joined string passed to cmd_cb."""
@@ -175,11 +182,13 @@ class TestRunTool:
     def test_ignore_returncode_returns_lines_on_nonzero_exit(self) -> None:
         """ignore_returncode=True keeps collected lines even when exit code != 0."""
         with patch("subprocess.Popen", return_value=_make_popen("sub.example.com\n", returncode=1)):
-            lines = run_tool(["tool"], timeout=30, ignore_returncode=True)
+            lines, timed_out = run_tool(["tool"], timeout=30, ignore_returncode=True)
         assert lines == ["sub.example.com"]
+        assert timed_out is False
 
     def test_ignore_returncode_false_drops_lines_on_nonzero_exit(self) -> None:
         """Default behaviour: non-zero exit discards collected lines."""
         with patch("subprocess.Popen", return_value=_make_popen("sub.example.com\n", returncode=1)):
-            lines = run_tool(["tool"], timeout=30, ignore_returncode=False)
+            lines, timed_out = run_tool(["tool"], timeout=30, ignore_returncode=False)
         assert lines == []
+        assert timed_out is False

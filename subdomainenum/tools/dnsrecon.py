@@ -81,7 +81,7 @@ def run_dnsrecon(
         cmd += ["-a", "-z"]  # AXFR zone transfer, DNSSEC zone walk
 
     try:
-        lines = run_tool(cmd, timeout=timeout, line_cb=line_cb, cmd_cb=cmd_cb, capture_stderr=True, ignore_returncode=True)
+        lines, timed_out = run_tool(cmd, timeout=timeout, line_cb=line_cb, cmd_cb=cmd_cb, capture_stderr=True, ignore_returncode=True)
     except RuntimeError as exc:
         result.available = False
         result.error = str(exc)
@@ -97,4 +97,5 @@ def run_dnsrecon(
                 if part not in result.subdomains:
                     result.subdomains.append(part)
 
+    result.timed_out = timed_out
     return result

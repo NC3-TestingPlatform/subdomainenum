@@ -91,6 +91,22 @@ class TestFinish:
         logger.finish("san", None)
         assert "san" in logger._order
 
+    def test_finish_timeout_sets_timeout_status(self) -> None:
+        logger = DebugLogger()
+        logger.add_line("subfinder", "partial.example.com")
+        logger.finish("subfinder", None, timed_out=True)
+        assert logger._statuses["subfinder"] == "TIMEOUT"
+
+    def test_finish_timeout_no_error_stored(self) -> None:
+        logger = DebugLogger()
+        logger.finish("amass", None, timed_out=True)
+        assert logger._errors["amass"] is None
+
+    def test_finish_timeout_takes_precedence_over_error(self) -> None:
+        logger = DebugLogger()
+        logger.finish("dnsrecon", "some error", timed_out=True)
+        assert logger._statuses["dnsrecon"] == "TIMEOUT"
+
 
 class TestSetInvocation:
     def test_set_invocation_stores_version(self) -> None:
@@ -207,6 +223,13 @@ class TestFormatLog:
         logger.add_line("subfinder", "x.example.com")
         result = logger.format_log()
         assert "Invocation" not in result
+
+    def test_format_log_timeout_shows_timeout_status(self) -> None:
+        logger = DebugLogger()
+        logger.add_line("gobuster", "partial.example.com")
+        logger.finish("gobuster", None, timed_out=True)
+        result = logger.format_log()
+        assert "status=TIMEOUT" in result
 
 
 class TestSaveToFile:

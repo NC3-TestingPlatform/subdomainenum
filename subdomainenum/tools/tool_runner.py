@@ -15,8 +15,8 @@ def run_tool(
     cmd_cb: Callable[[str], None] | None = None,
     capture_stderr: bool = False,
     ignore_returncode: bool = False,
-) -> list[str]:
-    """Run *cmd* as a subprocess and return its output as a list of non-empty lines.
+) -> tuple[list[str], bool]:
+    """Run *cmd* as a subprocess and return its output lines and a timeout flag.
 
     :param cmd: Command and arguments to execute.
     :param timeout: Maximum seconds to wait for the process.  On timeout,
@@ -32,8 +32,9 @@ def run_tool(
         process exits with a non-zero code (useful for tools that report partial
         failures via exit code but still emit valid results, e.g. dnsrecon when
         AXFR is refused).
-    :returns: Non-empty, stripped output lines.
-    :rtype: list[str]
+    :returns: Tuple of (non-empty stripped output lines, timed_out flag).
+        ``timed_out`` is ``True`` only when the process was killed due to timeout.
+    :rtype: tuple[list[str], bool]
     :raises RuntimeError: When the binary was not found (``FileNotFoundError``).
     """
     if cmd_cb is not None:
@@ -69,11 +70,11 @@ def run_tool(
         if proc.stdout:
             proc.stdout.close()
         reader.join(2)  # let reader drain after process death (EOF arrives quickly)
-        return list(lines)  # return partial results collected before the timeout
+        return list(lines), True  # return partial results collected before the timeout
 
     proc.wait()
 
     if proc.returncode != 0 and not ignore_returncode:
-        return []
+        return [], False
 
-    return lines
+    return lines, False

@@ -74,16 +74,23 @@ class DebugLogger:
             self._commands[source] = cmd
             self._statuses[source] = "RUNNING"
 
-    def finish(self, source: str, error: str | None) -> None:
-        """Mark *source* as DONE or FAILED.
+    def finish(self, source: str, error: str | None, timed_out: bool = False) -> None:
+        """Mark *source* as DONE, FAILED, or TIMEOUT.
 
         :param source: Tool/source name.
         :param error: Error message if the source failed; ``None`` on success.
+        :param timed_out: When ``True``, the source was killed due to a timeout;
+            takes precedence over *error* — status is set to ``TIMEOUT``.
         """
         with self._lock:
             self._register(source)
             self._errors[source] = error
-            self._statuses[source] = "FAILED" if error else "DONE"
+            if timed_out:
+                self._statuses[source] = "TIMEOUT"
+            elif error:
+                self._statuses[source] = "FAILED"
+            else:
+                self._statuses[source] = "DONE"
 
     def set_invocation(
         self,

@@ -228,7 +228,7 @@ class TestRunPassive:
         assert "boom" in error_sources[0].error
 
     def test_finish_cb_called_on_completion(self) -> None:
-        """finish_cb is called once per source with (name, None) on success."""
+        """finish_cb is called once per source with (name, None, False) on success."""
         finish_calls: list[tuple] = []
         src = _make_source("sub.example.com")
         with (
@@ -241,13 +241,13 @@ class TestRunPassive:
             _run_passive(
                 "example.com",
                 progress_cb=None,
-                finish_cb=lambda name, err: finish_calls.append((name, err)),
+                finish_cb=lambda name, err, timed_out: finish_calls.append((name, err, timed_out)),
             )
         assert len(finish_calls) == 5
-        assert all(err is None for _, err in finish_calls)
+        assert all(err is None for _, err, _ in finish_calls)
 
     def test_finish_cb_called_on_error(self) -> None:
-        """finish_cb is called with (name, error_str) when a source raises."""
+        """finish_cb is called with (name, error_str, False) when a source raises."""
         finish_calls: list[tuple] = []
         src = _make_source()
         with (
@@ -260,9 +260,9 @@ class TestRunPassive:
             _run_passive(
                 "example.com",
                 progress_cb=None,
-                finish_cb=lambda name, err: finish_calls.append((name, err)),
+                finish_cb=lambda name, err, timed_out: finish_calls.append((name, err, timed_out)),
             )
-        error_calls = [(n, e) for n, e in finish_calls if e is not None]
+        error_calls = [(n, e) for n, e, _ in finish_calls if e is not None]
         assert len(error_calls) == 1
         assert "network error" in error_calls[0][1]
 
@@ -360,7 +360,7 @@ class TestRunActive:
         assert any(s == "dnsrecon" for s, _ in cmd_calls)
 
     def test_finish_cb_called(self) -> None:
-        """finish_cb is called for each active source with (name, error_or_none)."""
+        """finish_cb is called for each active source with (name, error_or_none, timed_out)."""
         finish_calls: list[tuple] = []
         src = _make_source()
         with (
@@ -373,14 +373,14 @@ class TestRunActive:
                 wordlist="/tmp/w.txt",
                 url=None,
                 progress_cb=None,
-                finish_cb=lambda name, err: finish_calls.append((name, err)),
+                finish_cb=lambda name, err, timed_out: finish_calls.append((name, err, timed_out)),
             )
-        names = [n for n, _ in finish_calls]
+        names = [n for n, _, _ in finish_calls]
         assert "amass" in names
         assert "dnsrecon" in names
         assert "gobuster" in names
         assert "ffuf" in names
-        ffuf_err = next(err for name, err in finish_calls if name == "ffuf")
+        ffuf_err = next(err for name, err, _ in finish_calls if name == "ffuf")
         assert ffuf_err is not None  # skipped without url
 
     def test_finish_cb_called_for_ffuf(self) -> None:
@@ -398,9 +398,9 @@ class TestRunActive:
                 wordlist="/tmp/w.txt",
                 url="http://example.com",
                 progress_cb=None,
-                finish_cb=lambda name, err: finish_calls.append((name, err)),
+                finish_cb=lambda name, err, timed_out: finish_calls.append((name, err, timed_out)),
             )
-        names = [n for n, _ in finish_calls]
+        names = [n for n, _, _ in finish_calls]
         assert "ffuf" in names
 
     def test_amass_called_with_active_mode(self) -> None:

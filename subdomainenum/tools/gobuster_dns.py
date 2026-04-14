@@ -37,7 +37,7 @@ def run_gobuster_dns(
         "--no-color",
     ]
     try:
-        lines = run_tool(cmd, timeout=timeout, line_cb=line_cb, cmd_cb=cmd_cb)
+        lines, timed_out = run_tool(cmd, timeout=timeout, line_cb=line_cb, cmd_cb=cmd_cb)
     except RuntimeError as exc:
         result.available = False
         result.error = str(exc)
@@ -53,4 +53,5 @@ def run_gobuster_dns(
                 if part not in result.subdomains:
                     result.subdomains.append(part)
 
+    result.timed_out = timed_out
     return result
