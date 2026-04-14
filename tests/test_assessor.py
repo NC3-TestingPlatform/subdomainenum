@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -184,7 +184,7 @@ class TestRunPassive:
             _run_passive(
                 "example.com",
                 progress_cb=None,
-                debug_cb=lambda s, l: debug_calls.append((s, l)),
+                debug_cb=lambda s, line: debug_calls.append((s, line)),
             )
         assert ("subfinder", "sub.example.com") in debug_calls
 
@@ -327,7 +327,7 @@ class TestRunActive:
                 wordlist="/tmp/w.txt",
                 url=None,
                 progress_cb=None,
-                debug_cb=lambda s, l: debug_calls.append((s, l)),
+                debug_cb=lambda s, line: debug_calls.append((s, line)),
             )
         assert ("dnsrecon", "output line") in debug_calls
 

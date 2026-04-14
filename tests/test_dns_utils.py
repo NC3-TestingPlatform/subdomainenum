@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 from subdomainenum.dns_utils import is_alive, resolve_ips
 

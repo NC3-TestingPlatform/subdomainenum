@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 from unittest.mock import patch
 
-import pytest
 from typer.testing import CliRunner
 
 from subdomainenum.cli import app

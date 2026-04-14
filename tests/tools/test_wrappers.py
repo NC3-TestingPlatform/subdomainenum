@@ -6,7 +6,6 @@ from __future__ import annotations
 import json
 from unittest.mock import MagicMock, mock_open, patch
 
-import pytest
 
 from subdomainenum.tools.amass import run_amass
 from subdomainenum.tools.assetfinder import run_assetfinder
@@ -65,7 +64,8 @@ class TestRunSubfinder:
         assert "a.example.com" in result.subdomains
 
     def test_cmd_cb_passed_to_run_tool(self) -> None:
-        cb = lambda cmd: None
+        def cb(cmd: str) -> None:
+            pass
         with patch("subdomainenum.tools.subfinder.run_tool", return_value=[]) as mock:
             run_subfinder("example.com", cmd_cb=cb)
         assert mock.call_args.kwargs.get("cmd_cb") is cb
@@ -101,7 +101,8 @@ class TestRunAmass:
         assert result.available is False
 
     def test_cmd_cb_passed_to_run_tool(self) -> None:
-        cb = lambda cmd: None
+        def cb(cmd: str) -> None:
+            pass
         with patch("subdomainenum.tools.amass.run_tool", return_value=[]) as mock:
             run_amass("example.com", cmd_cb=cb)
         assert mock.call_args.kwargs.get("cmd_cb") is cb
@@ -128,7 +129,8 @@ class TestRunFindomain:
         assert result.available is False
 
     def test_cmd_cb_passed_to_run_tool(self) -> None:
-        cb = lambda cmd: None
+        def cb(cmd: str) -> None:
+            pass
         with patch("subdomainenum.tools.findomain.run_tool", return_value=[]) as mock:
             run_findomain("example.com", cmd_cb=cb)
         assert mock.call_args.kwargs.get("cmd_cb") is cb
@@ -155,7 +157,8 @@ class TestRunAssetfinder:
         assert result.available is False
 
     def test_cmd_cb_passed_to_run_tool(self) -> None:
-        cb = lambda cmd: None
+        def cb(cmd: str) -> None:
+            pass
         with patch("subdomainenum.tools.assetfinder.run_tool", return_value=[]) as mock:
             run_assetfinder("example.com", cmd_cb=cb)
         assert mock.call_args.kwargs.get("cmd_cb") is cb
@@ -300,7 +303,8 @@ class TestRunDnsrecon:
         assert mock.call_args.kwargs.get("ignore_returncode") is True
 
     def test_cmd_cb_passed_to_run_tool(self) -> None:
-        cb = lambda cmd: None
+        def cb(cmd: str) -> None:
+            pass
         with patch("subdomainenum.tools.dnsrecon.run_tool", return_value=[]) as mock:
             run_dnsrecon("example.com", mode=EnumMode.PASSIVE, cmd_cb=cb)
         assert mock.call_args.kwargs.get("cmd_cb") is cb
@@ -339,7 +343,8 @@ class TestRunGobusterDns:
         assert "sub.example.com" in result.subdomains
 
     def test_cmd_cb_passed_to_run_tool(self) -> None:
-        cb = lambda cmd: None
+        def cb(cmd: str) -> None:
+            pass
         with patch("subdomainenum.tools.gobuster_dns.run_tool", return_value=[]) as mock:
             run_gobuster_dns("example.com", wordlist="/tmp/w.txt", cmd_cb=cb)
         assert mock.call_args.kwargs.get("cmd_cb") is cb
@@ -477,7 +482,8 @@ class TestRunFfuf:
         assert results == []
 
     def test_cmd_cb_passed_to_run_tool(self) -> None:
-        cb = lambda cmd: None
+        def cb(cmd: str) -> None:
+            pass
         with patch("subdomainenum.tools.ffuf.run_tool", return_value=[]) as mock, \
              patch("subdomainenum.tools.ffuf.tempfile.NamedTemporaryFile", return_value=_make_mock_ntf()), \
              patch("builtins.open", mock_open(read_data="{}")), \

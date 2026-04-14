@@ -5,7 +5,6 @@ from __future__ import annotations
 import threading
 from pathlib import Path
 
-import pytest
 
 from subdomainenum.debug_logger import DebugLogger
 

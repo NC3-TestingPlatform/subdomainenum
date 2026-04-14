@@ -77,7 +77,6 @@ def run_ffuf(
 
     with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as tf:
         output_file: str = tf.name
-    cleanup = True
 
     try:
         cmd = [
