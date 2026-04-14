@@ -13,7 +13,7 @@ $ subdomainenum check example.com
 ```
 
 ![Python](https://img.shields.io/badge/python-%3E%3D3.11-blue)
-![Tests](https://img.shields.io/badge/tests-213%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-223%20passing-brightgreen)
 ![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)
 ![License](https://img.shields.io/badge/license-GPLv3-lightgrey)
 
@@ -38,8 +38,8 @@ $ subdomainenum check example.com
 
 | Source / Mode      | Type    | What it does                                                                         |
 | ------------------ | ------- | ------------------------------------------------------------------------------------ |
-| **subfinder**      | Passive | Runs `subfinder -d domain -silent`                                                   |
-| **amass**          | Passive | Runs `amass enum -d domain -silent`                                                  |
+| **subfinder**      | Passive | Runs `subfinder -d domain -silent -all` (queries all sources)                        |
+| **amass**          | Passive | Runs `amass enum -d domain`; parses v4 graph-format output to extract FQDNs         |
 | **findomain**      | Passive | Runs `findomain --target domain --quiet`                                             |
 | **assetfinder**    | Passive | Runs `assetfinder --subs-only domain`                                                |
 | **dnsrecon**       | Passive + Active | Passive: `std,srv` with Bing/Yandex/crt.sh (`-b -y -k`); Active: `brt` with AXFR/DNSSEC zone walk (`-a -z`) |
@@ -330,7 +330,7 @@ pytest tests/test_assessor.py -v
 pytest tests/test_cli.py::TestCheckCommand -v
 ```
 
-The test suite has **213 tests** and achieves **100% coverage** across all modules.
+The test suite has **223 tests** and achieves **100% coverage** across all modules.
 
 All DNS I/O (`dns.resolver.Resolver.resolve`), TLS
 sockets, and subprocess calls are mocked at the boundary — no test touches a real

@@ -24,7 +24,7 @@ def run_subfinder(
     :rtype: SourceResult
     """
     result = SourceResult(name="subfinder")
-    cmd = ["subfinder", "-d", domain, "-silent"]
+    cmd = ["subfinder", "-d", domain, "-silent", "-all"]
     try:
         lines = run_tool(cmd, timeout=timeout, line_cb=line_cb, cmd_cb=cmd_cb)
     except RuntimeError as exc:

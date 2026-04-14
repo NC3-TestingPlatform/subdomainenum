@@ -7,7 +7,7 @@ import json
 from unittest.mock import MagicMock, mock_open, patch
 
 
-from subdomainenum.tools.amass import run_amass
+from subdomainenum.tools.amass import _parse_amass_output, run_amass
 from subdomainenum.tools.assetfinder import run_assetfinder
 from subdomainenum.tools.dnsrecon import run_dnsrecon
 from subdomainenum.tools.findomain import run_findomain
@@ -44,6 +44,7 @@ class TestRunSubfinder:
             cmd = mock.call_args[0][0]
         assert "example.com" in cmd
         assert "-silent" in cmd
+        assert "-all" in cmd
         assert "-passive" not in cmd
 
     def test_tool_missing_sets_available_false(self) -> None:
@@ -76,6 +77,59 @@ class TestRunSubfinder:
 # ---------------------------------------------------------------------------
 
 
+class TestParseAmassOutput:
+    """Unit tests for _parse_amass_output — amass v4 graph format parser."""
+
+    def test_extracts_subdomain_fqdn(self) -> None:
+        lines = ["sub.example.com (FQDN) --> a_record --> 1.2.3.4 (IPAddress)"]
+        assert _parse_amass_output(lines, "example.com") == ["sub.example.com"]
+
+    def test_extracts_apex_domain(self) -> None:
+        lines = ["example.com (FQDN) --> a_record --> 1.2.3.4 (IPAddress)"]
+        assert _parse_amass_output(lines, "example.com") == ["example.com"]
+
+    def test_filters_out_external_fqdns(self) -> None:
+        lines = [
+            "example.com (FQDN) --> ns_record --> ns1.eurodns.com (FQDN)",
+            "ns1.eurodns.com (FQDN) --> a_record --> 199.167.66.107 (IPAddress)",
+        ]
+        result = _parse_amass_output(lines, "example.com")
+        assert result == ["example.com"]
+        assert "ns1.eurodns.com" not in result
+
+    def test_deduplicates_fqdns(self) -> None:
+        lines = [
+            "sub.example.com (FQDN) --> a_record --> 1.2.3.4 (IPAddress)",
+            "sub.example.com (FQDN) --> aaaa_record --> ::1 (IPAddress)",
+        ]
+        result = _parse_amass_output(lines, "example.com")
+        assert result.count("sub.example.com") == 1
+
+    def test_skips_non_fqdn_lines(self) -> None:
+        lines = [
+            "31.22.120.0/21 (Netblock) --> contains --> 1.2.3.4 (IPAddress)",
+            "12345 (ASN) --> managed_by --> ACME (RIROrganization)",
+            "[*] Some dnsrecon-style line",
+        ]
+        assert _parse_amass_output(lines, "example.com") == []
+
+    def test_empty_input(self) -> None:
+        assert _parse_amass_output([], "example.com") == []
+
+    def test_case_insensitive_normalisation(self) -> None:
+        lines = ["Sub.Example.COM (FQDN) --> a_record --> 1.2.3.4 (IPAddress)"]
+        result = _parse_amass_output(lines, "example.com")
+        assert result == ["sub.example.com"]
+
+    def test_multiple_subdomains_preserved_in_order(self) -> None:
+        lines = [
+            "a.example.com (FQDN) --> a_record --> 1.1.1.1 (IPAddress)",
+            "b.example.com (FQDN) --> a_record --> 2.2.2.2 (IPAddress)",
+        ]
+        result = _parse_amass_output(lines, "example.com")
+        assert result == ["a.example.com", "b.example.com"]
+
+
 class TestRunAmass:
     def test_returns_source_result(self) -> None:
         with patch("subdomainenum.tools.amass.run_tool", return_value=[]):
@@ -99,6 +153,19 @@ class TestRunAmass:
         ):
             result = run_amass("example.com")
         assert result.available is False
+
+    def test_parses_graph_format_output(self) -> None:
+        """run_amass must parse amass v4 graph-format output, not store raw lines."""
+        graph_lines = [
+            "sub.example.com (FQDN) --> a_record --> 1.2.3.4 (IPAddress)",
+            "example.com (FQDN) --> ns_record --> ns1.eurodns.com (FQDN)",
+            "ns1.eurodns.com (FQDN) --> a_record --> 5.6.7.8 (IPAddress)",
+        ]
+        with patch("subdomainenum.tools.amass.run_tool", return_value=graph_lines):
+            result = run_amass("example.com")
+        assert "sub.example.com" in result.subdomains
+        assert "example.com" in result.subdomains
+        assert "ns1.eurodns.com" not in result.subdomains
 
     def test_cmd_cb_passed_to_run_tool(self) -> None:
         def cb(cmd: str) -> None:

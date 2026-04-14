@@ -2,10 +2,45 @@
 
 from __future__ import annotations
 
+import re
 from typing import Callable
 
 from subdomainenum.tools.tool_runner import run_tool
 from subdomainenum.models import SourceResult
+
+# amass v4 outputs relationship lines: "<entity> (<type>) --> <relation> --> <entity> (<type>)"
+_AMASS_FQDN_RE = re.compile(r"^(\S+)\s+\(FQDN\)\s+-->")
+
+
+def _parse_amass_output(lines: list[str], domain: str) -> list[str]:
+    """Extract target-domain FQDNs from amass v4 graph-format output.
+
+    amass v4 outputs relationship lines such as::
+
+        sub.example.com (FQDN) --> a_record --> 1.2.3.4 (IPAddress)
+        example.com (FQDN) --> ns_record --> ns1.eurodns.com (FQDN)
+
+    Only left-hand FQDNs that equal *domain* or end with ``.<domain>`` are kept.
+    External FQDNs (e.g. nameservers) appearing on the right-hand side are ignored.
+
+    :param lines: Raw output lines from amass.
+    :param domain: Base domain to filter by.
+    :returns: Deduplicated list of matching FQDNs.
+    :rtype: list[str]
+    """
+    suffix = f".{domain}"
+    seen: set[str] = set()
+    results: list[str] = []
+    for line in lines:
+        match = _AMASS_FQDN_RE.match(line)
+        if not match:
+            continue
+        fqdn = match.group(1).lower()
+        if fqdn == domain or fqdn.endswith(suffix):
+            if fqdn not in seen:
+                seen.add(fqdn)
+                results.append(fqdn)
+    return results
 
 
 def run_amass(
@@ -32,5 +67,5 @@ def run_amass(
         result.error = str(exc)
         return result
 
-    result.subdomains = lines
+    result.subdomains = _parse_amass_output(lines, domain)
     return result
