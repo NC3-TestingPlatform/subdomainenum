@@ -47,5 +47,5 @@ junit/
 dist/
 build/
 
-# Logs
-reports/*.log
+# Reports output directory
+reports/
