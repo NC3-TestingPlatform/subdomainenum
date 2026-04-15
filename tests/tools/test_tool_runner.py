@@ -192,3 +192,49 @@ class TestRunTool:
             lines, timed_out = run_tool(["tool"], timeout=30, ignore_returncode=False)
         assert lines == []
         assert timed_out is False
+
+    def test_idle_timeout_kills_after_silence(self) -> None:
+        """Process killed when no output arrives within idle_timeout window."""
+        import threading
+
+        def _slow_popen(*args, **kwargs):
+            mock_proc = MagicMock()
+            event = threading.Event()
+
+            class _SilentStream:
+                def __iter__(self):
+                    yield "first.example.com\n"
+                    event.wait()  # then silence forever
+
+                def close(self):
+                    event.set()
+
+            mock_proc.stdout = _SilentStream()
+            mock_proc.returncode = -9
+            mock_proc.wait.return_value = -9
+            mock_proc.kill.side_effect = lambda: event.set()
+            return mock_proc
+
+        with patch("subprocess.Popen", side_effect=_slow_popen):
+            lines, timed_out = run_tool(["tool"], timeout=60, idle_timeout=0)
+
+        assert "first.example.com" in lines
+        assert timed_out is True
+
+    def test_idle_timeout_not_triggered_while_lines_arrive(self) -> None:
+        """Process not killed while output keeps arriving within idle window."""
+        with patch("subprocess.Popen", return_value=_make_popen("a.example.com\nb.example.com\n")):
+            lines, timed_out = run_tool(["tool"], timeout=30, idle_timeout=5)
+
+        assert "a.example.com" in lines
+        assert "b.example.com" in lines
+        assert timed_out is False
+
+    def test_idle_timeout_with_line_cb_still_invokes_cb(self) -> None:
+        """line_cb is called for each line even when idle_timeout is also active."""
+        collected: list[str] = []
+        with patch("subprocess.Popen", return_value=_make_popen("a.example.com\nb.example.com\n")):
+            lines, timed_out = run_tool(["tool"], timeout=30, idle_timeout=5, line_cb=collected.append)
+        assert collected == ["a.example.com", "b.example.com"]
+        assert lines == ["a.example.com", "b.example.com"]
+        assert timed_out is False

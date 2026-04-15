@@ -153,7 +153,7 @@ def _run_active(
     vhosts: list[VhostResult] = []
 
     _cb("Running amass (active)…")
-    result = run_amass(domain, mode=EnumMode.ACTIVE, line_cb=_line_cb("amass"), cmd_cb=_cmd_cb("amass"))
+    result = run_amass(domain, mode=EnumMode.ACTIVE, wordlist=wordlist, line_cb=_line_cb("amass"), cmd_cb=_cmd_cb("amass"))
     sources.append(result)
     if finish_cb:
         finish_cb("amass", result.error, result.timed_out)

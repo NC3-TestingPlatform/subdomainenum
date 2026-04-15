@@ -232,6 +232,46 @@ class TestRunAmass:
             result = run_amass("example.com")
         assert result.timed_out is False
 
+    def test_no_brute_flag_without_wordlist(self) -> None:
+        """No wordlist → -brute and -w must not appear in the command."""
+        with patch("subdomainenum.tools.amass.run_tool", return_value=([], False)) as mock:
+            run_amass("example.com", mode=EnumMode.ACTIVE)
+            cmd = mock.call_args[0][0]
+        assert "-brute" not in cmd
+        assert "-w" not in cmd
+
+    def test_brute_flag_with_wordlist_in_active_mode(self) -> None:
+        """wordlist + ACTIVE mode → -brute -w <path> in command."""
+        with patch("subdomainenum.tools.amass.run_tool", return_value=([], False)) as mock:
+            run_amass("example.com", mode=EnumMode.ACTIVE, wordlist="/tmp/words.txt")
+            cmd = mock.call_args[0][0]
+        assert "-brute" in cmd
+        assert "-w" in cmd
+        assert "/tmp/words.txt" in cmd
+
+    def test_brute_flag_with_wordlist_in_all_mode(self) -> None:
+        """wordlist + ALL mode → -brute -w <path> in command."""
+        with patch("subdomainenum.tools.amass.run_tool", return_value=([], False)) as mock:
+            run_amass("example.com", mode=EnumMode.ALL, wordlist="/tmp/words.txt")
+            cmd = mock.call_args[0][0]
+        assert "-brute" in cmd
+        assert "-w" in cmd
+        assert "/tmp/words.txt" in cmd
+
+    def test_no_brute_flag_in_passive_mode_with_wordlist(self) -> None:
+        """wordlist + PASSIVE mode → -brute must not appear (passive ignores wordlist)."""
+        with patch("subdomainenum.tools.amass.run_tool", return_value=([], False)) as mock:
+            run_amass("example.com", mode=EnumMode.PASSIVE, wordlist="/tmp/words.txt")
+            cmd = mock.call_args[0][0]
+        assert "-brute" not in cmd
+        assert "-w" not in cmd
+
+    def test_idle_timeout_forwarded_to_run_tool(self) -> None:
+        """idle_timeout kwarg is forwarded to run_tool."""
+        with patch("subdomainenum.tools.amass.run_tool", return_value=([], False)) as mock:
+            run_amass("example.com", idle_timeout=90)
+        assert mock.call_args.kwargs.get("idle_timeout") == 90
+
 
 # ---------------------------------------------------------------------------
 # findomain

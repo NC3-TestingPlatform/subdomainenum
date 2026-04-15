@@ -50,7 +50,9 @@ def run_amass(
     domain: str,
     *,
     mode: EnumMode = EnumMode.PASSIVE,
-    timeout: int = 300,
+    wordlist: str | None = None,
+    timeout: int = 600,
+    idle_timeout: int = 120,
     line_cb: Callable[[str], None] | None = None,
     cmd_cb: Callable[[str], None] | None = None,
 ) -> SourceResult:
@@ -59,7 +61,14 @@ def run_amass(
     :param domain: Target base domain.
     :param mode: Enumeration mode.  When ``active`` or ``all``, ``-active`` is
         appended to enable zone transfers and certificate name grabs.
-    :param timeout: Maximum seconds to wait for amass (it can be slow).
+    :param wordlist: Path to a wordlist file.  When provided and mode is ``active``
+        or ``all``, ``-brute -w <wordlist>`` is appended to enable brute-force
+        subdomain enumeration.
+    :param timeout: Hard ceiling in seconds; amass is killed if it runs this long
+        regardless of output activity.
+    :param idle_timeout: Seconds of silence after which amass is killed even if the
+        hard *timeout* has not elapsed.  Resets whenever amass emits a new line.
+        Prevents the common case where amass stalls indefinitely without output.
     :param line_cb: Optional callback invoked with each output line (for debug mode).
     :param cmd_cb: Optional callback invoked once with the full command string before launch.
     :rtype: SourceResult
@@ -68,8 +77,17 @@ def run_amass(
     cmd = ["amass", "enum", "-d", domain]
     if mode in (EnumMode.ACTIVE, EnumMode.ALL):
         cmd.append("-active")
+        if wordlist:
+            cmd += ["-brute", "-w", wordlist]
     try:
-        lines, timed_out = run_tool(cmd, timeout=timeout, line_cb=line_cb, cmd_cb=cmd_cb, ignore_returncode=True)
+        lines, timed_out = run_tool(
+            cmd,
+            timeout=timeout,
+            idle_timeout=idle_timeout,
+            line_cb=line_cb,
+            cmd_cb=cmd_cb,
+            ignore_returncode=True,
+        )
     except RuntimeError as exc:
         result.available = False
         result.error = str(exc)
