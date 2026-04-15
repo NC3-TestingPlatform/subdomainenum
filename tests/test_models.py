@@ -117,6 +117,18 @@ class TestSourceResult:
         s = SourceResult(name="crt.sh", subdomains=["a.example.com", "b.example.com"])
         assert len(s.subdomains) == 2
 
+    def test_mode_defaults_to_none(self) -> None:
+        s = SourceResult(name="subfinder")
+        assert s.mode is None
+
+    def test_mode_passive(self) -> None:
+        s = SourceResult(name="subfinder", mode=EnumMode.PASSIVE)
+        assert s.mode == EnumMode.PASSIVE
+
+    def test_mode_active(self) -> None:
+        s = SourceResult(name="gobuster", mode=EnumMode.ACTIVE)
+        assert s.mode == EnumMode.ACTIVE
+
 
 # ---------------------------------------------------------------------------
 # EnumReport

@@ -23,8 +23,8 @@ def _make_report() -> EnumReport:
             VhostResult(vhost="admin.example.com", status_code=200, content_length=512),
         ],
         sources=[
-            SourceResult(name="crt.sh", subdomains=["sub.example.com"], available=True),
-            SourceResult(name="amass", available=False, error="not found"),
+            SourceResult(name="crt.sh", subdomains=["sub.example.com"], available=True, mode=EnumMode.PASSIVE),
+            SourceResult(name="amass", available=False, error="not found", mode=EnumMode.ACTIVE),
         ],
     )
 
@@ -68,6 +68,22 @@ class TestToDict:
         assert isinstance(result["sources"], list)
         assert len(result["sources"]) == 2
 
+    def test_sources_include_mode(self) -> None:
+        result = to_dict(_make_report())
+        passive_src = next(s for s in result["sources"] if s["name"] == "crt.sh")
+        active_src = next(s for s in result["sources"] if s["name"] == "amass")
+        assert passive_src["mode"] == "passive"
+        assert active_src["mode"] == "active"
+
+    def test_sources_mode_none_when_untagged(self) -> None:
+        report = EnumReport(
+            domain="example.com",
+            mode=EnumMode.PASSIVE,
+            sources=[SourceResult(name="subfinder")],
+        )
+        result = to_dict(report)
+        assert result["sources"][0]["mode"] is None
+
     def test_json_serializable(self) -> None:
         result = to_dict(_make_report())
         # Must not raise
@@ -102,6 +118,52 @@ class TestPrintReport:
         report = EnumReport(domain="example.com", mode=EnumMode.PASSIVE, subdomains=[], sources=[])
         print_report(report, console=console)
         assert "No subdomains found" in buf.getvalue()
+
+    def test_mode_column_shown_in_all_mode(self) -> None:
+        buf = StringIO()
+        console = Console(file=buf, width=200, highlight=False)
+        print_report(_make_report(), console=console)
+        output = buf.getvalue()
+        assert "Mode" in output
+        assert "passive" in output
+        assert "active" in output
+
+    def test_mode_column_hidden_in_passive_mode(self) -> None:
+        buf = StringIO()
+        console = Console(file=buf, width=200, highlight=False)
+        report = EnumReport(
+            domain="example.com",
+            mode=EnumMode.PASSIVE,
+            sources=[SourceResult(name="subfinder", mode=EnumMode.PASSIVE)],
+        )
+        print_report(report, console=console)
+        output = buf.getvalue()
+        assert "Mode" not in output
+
+    def test_mode_column_hidden_in_active_mode(self) -> None:
+        buf = StringIO()
+        console = Console(file=buf, width=200, highlight=False)
+        report = EnumReport(
+            domain="example.com",
+            mode=EnumMode.ACTIVE,
+            sources=[SourceResult(name="gobuster", mode=EnumMode.ACTIVE)],
+        )
+        print_report(report, console=console)
+        output = buf.getvalue()
+        assert "Mode" not in output
+
+    def test_mode_column_shows_dash_for_untagged_source(self) -> None:
+        buf = StringIO()
+        console = Console(file=buf, width=200, highlight=False)
+        report = EnumReport(
+            domain="example.com",
+            mode=EnumMode.ALL,
+            sources=[SourceResult(name="unknown")],
+        )
+        print_report(report, console=console)
+        output = buf.getvalue()
+        assert "Mode" in output
+        assert "—" in output
 
 
 class TestSaveReport:

@@ -11,7 +11,7 @@ from rich import box
 from rich.panel import Panel
 from rich.text import Text
 
-from subdomainenum.models import EnumReport, Status
+from subdomainenum.models import EnumMode, EnumReport, Status
 from subdomainenum.verdict import build_verdict
 
 _console = Console()
@@ -56,6 +56,7 @@ def to_dict(report: EnumReport) -> dict:
                 "count": len(s.subdomains),
                 "available": s.available,
                 "error": s.error,
+                "mode": s.mode.value if s.mode is not None else None,
             }
             for s in report.sources
         ],
@@ -126,10 +127,18 @@ def print_report(report: EnumReport, *, console: Console | None = None) -> None:
     # Sources summary table
     if report.sources:
         con.print("\n[bold]Sources[/bold]")
-        src_table = Table("Source", "Found", "Available", "Error", box=box.SIMPLE_HEAD)
+        show_mode = report.mode == EnumMode.ALL
+        columns = ["Source", "Found", "Available", "Error"]
+        if show_mode:
+            columns.insert(1, "Mode")
+        src_table = Table(*columns, box=box.SIMPLE_HEAD)
         for s in report.sources:
             avail = "[green]yes[/green]" if s.available else "[red]no[/red]"
-            src_table.add_row(s.name, str(len(s.subdomains)), avail, s.error or "")
+            if show_mode:
+                mode_text = s.mode.value if s.mode is not None else "—"
+                src_table.add_row(s.name, mode_text, str(len(s.subdomains)), avail, s.error or "")
+            else:
+                src_table.add_row(s.name, str(len(s.subdomains)), avail, s.error or "")
         con.print(src_table)
 
     # Verdict summary line

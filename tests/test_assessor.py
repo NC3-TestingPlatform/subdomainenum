@@ -266,6 +266,34 @@ class TestRunPassive:
         assert len(error_calls) == 1
         assert "network error" in error_calls[0][1]
 
+    def test_passive_sources_have_mode_passive(self) -> None:
+        """All results from _run_passive have mode=EnumMode.PASSIVE stamped on them."""
+        src = _make_source("sub.example.com")
+        with (
+            patch("subdomainenum.assessor.run_subfinder", return_value=src),
+            patch("subdomainenum.assessor.run_amass", return_value=src),
+            patch("subdomainenum.assessor.run_findomain", return_value=src),
+            patch("subdomainenum.assessor.run_assetfinder", return_value=src),
+            patch("subdomainenum.assessor.run_dnsrecon", return_value=src),
+        ):
+            results = _run_passive("example.com", progress_cb=None)
+        assert all(r.mode == EnumMode.PASSIVE for r in results)
+
+    def test_exception_source_has_mode_passive(self) -> None:
+        """Sources that raise exceptions still get mode=EnumMode.PASSIVE in the error SourceResult."""
+        src = _make_source()
+        with (
+            patch("subdomainenum.assessor.run_subfinder", side_effect=RuntimeError("boom")),
+            patch("subdomainenum.assessor.run_amass", return_value=src),
+            patch("subdomainenum.assessor.run_findomain", return_value=src),
+            patch("subdomainenum.assessor.run_assetfinder", return_value=src),
+            patch("subdomainenum.assessor.run_dnsrecon", return_value=src),
+        ):
+            results = _run_passive("example.com", progress_cb=None)
+        error_results = [r for r in results if r.available is False]
+        assert len(error_results) == 1
+        assert error_results[0].mode == EnumMode.PASSIVE
+
 
 # ---------------------------------------------------------------------------
 # _run_active
@@ -414,6 +442,44 @@ class TestRunActive:
         ):
             _run_active("example.com", wordlist="/tmp/w.txt", url=None, progress_cb=None)
         assert mock_amass.call_args.kwargs.get("mode") == EnumMode.ACTIVE
+
+    def test_active_sources_have_mode_active(self) -> None:
+        """All SourceResults returned by _run_active have mode=EnumMode.ACTIVE stamped."""
+        src = _make_source()
+        with (
+            patch("subdomainenum.assessor.run_amass", return_value=src),
+            patch("subdomainenum.assessor.run_dnsrecon", return_value=src),
+            patch("subdomainenum.assessor.run_gobuster_dns", return_value=src),
+        ):
+            sources, _ = _run_active("example.com", wordlist="/tmp/w.txt", url=None, progress_cb=None)
+        assert all(s.mode == EnumMode.ACTIVE for s in sources)
+
+    def test_ffuf_source_with_url_has_mode_active(self) -> None:
+        """ffuf SourceResult created when url is provided has mode=EnumMode.ACTIVE."""
+        src = _make_source()
+        with (
+            patch("subdomainenum.assessor.run_amass", return_value=src),
+            patch("subdomainenum.assessor.run_dnsrecon", return_value=src),
+            patch("subdomainenum.assessor.run_gobuster_dns", return_value=src),
+            patch("subdomainenum.assessor.run_ffuf", return_value=[]),
+        ):
+            sources, _ = _run_active(
+                "example.com", wordlist="/tmp/w.txt", url="http://example.com", progress_cb=None
+            )
+        ffuf_src = next(s for s in sources if s.name == "ffuf")
+        assert ffuf_src.mode == EnumMode.ACTIVE
+
+    def test_ffuf_source_without_url_has_mode_active(self) -> None:
+        """ffuf SourceResult created when url is None (skipped branch) has mode=EnumMode.ACTIVE."""
+        src = _make_source()
+        with (
+            patch("subdomainenum.assessor.run_amass", return_value=src),
+            patch("subdomainenum.assessor.run_dnsrecon", return_value=src),
+            patch("subdomainenum.assessor.run_gobuster_dns", return_value=src),
+        ):
+            sources, _ = _run_active("example.com", wordlist="/tmp/w.txt", url=None, progress_cb=None)
+        ffuf_src = next(s for s in sources if s.name == "ffuf")
+        assert ffuf_src.mode == EnumMode.ACTIVE
 
 
 # ---------------------------------------------------------------------------

@@ -100,11 +100,12 @@ def _run_passive(
             source_name = futures[fut]
             try:
                 result = fut.result()
+                result.mode = EnumMode.PASSIVE
                 sources.append(result)
                 if finish_cb:
                     finish_cb(source_name, result.error, result.timed_out)
             except Exception as exc:
-                sources.append(SourceResult(name=source_name, error=str(exc), available=False))
+                sources.append(SourceResult(name=source_name, error=str(exc), available=False, mode=EnumMode.PASSIVE))
                 if finish_cb:
                     finish_cb(source_name, str(exc), False)
 
@@ -154,18 +155,21 @@ def _run_active(
 
     _cb("Running amass (active)…")
     result = run_amass(domain, mode=EnumMode.ACTIVE, wordlist=wordlist, line_cb=_line_cb("amass"), cmd_cb=_cmd_cb("amass"))
+    result.mode = EnumMode.ACTIVE
     sources.append(result)
     if finish_cb:
         finish_cb("amass", result.error, result.timed_out)
 
     _cb("Running dnsrecon (active)…")
     result = run_dnsrecon(domain, mode=EnumMode.ACTIVE, wordlist=wordlist, line_cb=_line_cb("dnsrecon"), cmd_cb=_cmd_cb("dnsrecon"))
+    result.mode = EnumMode.ACTIVE
     sources.append(result)
     if finish_cb:
         finish_cb("dnsrecon", result.error, result.timed_out)
 
     _cb("Running gobuster dns…")
     result = run_gobuster_dns(domain, wordlist=wordlist, line_cb=_line_cb("gobuster"), cmd_cb=_cmd_cb("gobuster"))
+    result.mode = EnumMode.ACTIVE
     sources.append(result)
     if finish_cb:
         finish_cb("gobuster", result.error, result.timed_out)
@@ -173,11 +177,11 @@ def _run_active(
     if url:
         _cb("Running ffuf (vhost fuzzing)…")
         vhosts = run_ffuf(domain, url=url, wordlist=wordlist, line_cb=_line_cb("ffuf"), cmd_cb=_cmd_cb("ffuf"))
-        sources.append(SourceResult(name="ffuf", subdomains=[v.vhost for v in vhosts]))
+        sources.append(SourceResult(name="ffuf", subdomains=[v.vhost for v in vhosts], mode=EnumMode.ACTIVE))
         if finish_cb:
             finish_cb("ffuf", None, False)
     else:
-        sources.append(SourceResult(name="ffuf", available=False, error="no URL resolved"))
+        sources.append(SourceResult(name="ffuf", available=False, error="no URL resolved", mode=EnumMode.ACTIVE))
         if finish_cb:
             finish_cb("ffuf", "no URL resolved", False)
 

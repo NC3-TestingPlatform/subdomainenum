@@ -86,6 +86,8 @@ class SourceResult:
     :param subdomains: FQDNs discovered by this source.
     :param error: Error message if the source failed; ``None`` on success.
     :param available: ``False`` when the required binary or API was unavailable.
+    :param mode: Enumeration mode this source was run in (``passive`` or ``active``),
+        or ``None`` when not categorised.
     """
 
     name: str
@@ -93,6 +95,7 @@ class SourceResult:
     error: str | None = None
     available: bool = True
     timed_out: bool = False
+    mode: EnumMode | None = None
 
 
 @dataclass
