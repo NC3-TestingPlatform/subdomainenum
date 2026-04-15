@@ -490,7 +490,7 @@ class TestRunActive:
 class TestResolveAll:
     def test_alive_when_ips_present(self) -> None:
         with patch("subdomainenum.assessor.resolve_ips", return_value=["1.2.3.4"]):
-            results = _resolve_all(["sub.example.com"], {"sub.example.com": ["san"]})
+            results = _resolve_all(["sub.example.com"], {"sub.example.com": ["subfinder"]})
         assert results[0].alive is True
         assert results[0].status == Status.ALIVE
 

@@ -88,8 +88,8 @@ class TestFinish:
 
     def test_finish_registers_source_if_not_seen(self) -> None:
         logger = DebugLogger()
-        logger.finish("san", None)
-        assert "san" in logger._order
+        logger.finish("subfinder", None)
+        assert "subfinder" in logger._order
 
     def test_finish_timeout_sets_timeout_status(self) -> None:
         logger = DebugLogger()
@@ -199,7 +199,7 @@ class TestFormatLog:
     def test_format_log_no_output_placeholder(self) -> None:
         """A source with no lines, no command, no error shows a placeholder."""
         logger = DebugLogger()
-        logger.finish("san", None)
+        logger.finish("subfinder", None)
         result = logger.format_log()
         assert "(no output)" in result
 
