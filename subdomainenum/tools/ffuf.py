@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import json
-import os
-import tempfile
+import re
 from typing import Callable
 
 from subdomainenum.tools.tool_runner import run_tool
@@ -12,32 +10,35 @@ from subdomainenum.models import VhostResult
 
 _DEFAULT_FILTER_CODES = {404, 400}
 
+_LINE_RE = re.compile(r"^(\S+)\s+\[Status:\s*(\d+),\s*Size:\s*(\d+)")
 
-def _parse_ffuf_json(
-    data: dict,
+
+def _parse_ffuf_line(
+    line: str,
     domain: str,
     filter_codes: set[int],
-) -> list[VhostResult]:
-    """Parse a ffuf JSON output dict into :class:`~subdomainenum.models.VhostResult` objects.
+) -> VhostResult | None:
+    """Parse a single ffuf stdout line into a :class:`~subdomainenum.models.VhostResult`.
 
-    :param data: Parsed JSON dict from ffuf (``{"results": [...]}`` shape).
+    :param line: A single line from ffuf human-readable stdout.
     :param domain: Base domain used to construct the vhost FQDN.
     :param filter_codes: HTTP status codes to exclude.
-    :returns: List of matching :class:`~subdomainenum.models.VhostResult` objects.
-    :rtype: list[VhostResult]
+    :returns: A :class:`~subdomainenum.models.VhostResult` if the line is a match,
+        ``None`` otherwise.
+    :rtype: VhostResult | None
     """
-    results: list[VhostResult] = []
-    for hit in data.get("results", []):
-        status_code = hit.get("status", 0)
-        if status_code in filter_codes:
-            continue
-        fuzz_word = hit.get("input", {}).get("FUZZ", "")
-        if not fuzz_word:
-            continue
-        content_length = hit.get("length", 0)
-        vhost = f"{fuzz_word}.{domain}"
-        results.append(VhostResult(vhost=vhost, status_code=status_code, content_length=content_length))
-    return results
+    m = _LINE_RE.match(line)
+    if not m:
+        return None
+    fuzz_word, status_str, size_str = m.group(1), m.group(2), m.group(3)
+    status_code = int(status_str)
+    if status_code in filter_codes:
+        return None
+    return VhostResult(
+        vhost=f"{fuzz_word}.{domain}",
+        status_code=status_code,
+        content_length=int(size_str),
+    )
 
 
 def run_ffuf(
@@ -54,10 +55,9 @@ def run_ffuf(
     """Run ffuf to fuzz virtual hosts via the Host header.
 
     Each word from *wordlist* is substituted as ``FUZZ`` in the Host header
-    value ``FUZZ.<domain>``.  Results are written to a temporary JSON file
-    via ``-of json -o <file>`` so that output is captured reliably even in
-    non-TTY subprocess environments (e.g. Docker) where ffuf suppresses its
-    human-readable stdout.
+    value ``FUZZ.<domain>``.  ffuf's human-readable stdout is captured line by
+    line; match lines are parsed directly via regex.  Non-match lines (header
+    block, progress, summary) are forwarded to *line_cb* but produce no results.
 
     :param domain: Target base domain (used to build Host header values).
     :param url: Target URL (e.g. ``"http://10.0.0.1"``).
@@ -75,39 +75,21 @@ def run_ffuf(
     if filter_codes is None:
         filter_codes = _DEFAULT_FILTER_CODES
 
-    with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as tf:
-        output_file: str = tf.name
+    cmd = [
+        "ffuf",
+        "-w", wordlist,
+        "-u", url,
+        "-H", f"Host: FUZZ.{domain}",
+        "-t", str(threads),
+        "-fc", ",".join(str(c) for c in sorted(filter_codes)),
+        "-ac",
+        "-noninteractive",
+    ]
 
     try:
-        cmd = [
-            "ffuf",
-            "-w", wordlist,
-            "-u", url,
-            "-H", f"Host: FUZZ.{domain}",
-            "-t", str(threads),
-            "-fc", ",".join(str(c) for c in sorted(filter_codes)),
-            "-ac",
-            "-noninteractive",
-            "-s",
-            "-of", "json",
-            "-o", output_file,
-        ]
-        try:
-            run_tool(cmd, timeout=timeout, line_cb=line_cb, cmd_cb=cmd_cb,
-                     ignore_returncode=True, capture_stderr=True)
-        except RuntimeError:
-            return []
+        lines, _ = run_tool(cmd, timeout=timeout, line_cb=line_cb, cmd_cb=cmd_cb,
+                            ignore_returncode=True, capture_stderr=True)
+    except RuntimeError:
+        return []
 
-        try:
-            with open(output_file) as f:
-                data = json.load(f)
-        except (FileNotFoundError, json.JSONDecodeError, OSError):
-            return []
-
-        return _parse_ffuf_json(data, domain, filter_codes)
-
-    finally:
-        try:
-            os.unlink(output_file)
-        except OSError:
-            pass
+    return [r for line in lines if (r := _parse_ffuf_line(line, domain, filter_codes)) is not None]

@@ -16,14 +16,14 @@ def _make_report() -> EnumReport:
         domain="example.com",
         mode=EnumMode.ALL,
         subdomains=[
-            SubdomainResult(fqdn="sub.example.com", status=Status.ALIVE, alive=True, ip_addresses=["1.2.3.4"], sources=["crt.sh"]),
+            SubdomainResult(fqdn="sub.example.com", status=Status.ALIVE, alive=True, ip_addresses=["1.2.3.4"], sources=["dnsrecon"]),
             SubdomainResult(fqdn="dead.example.com", status=Status.DEAD, alive=False),
         ],
         vhosts=[
             VhostResult(vhost="admin.example.com", status_code=200, content_length=512),
         ],
         sources=[
-            SourceResult(name="crt.sh", subdomains=["sub.example.com"], available=True, mode=EnumMode.PASSIVE),
+            SourceResult(name="dnsrecon", subdomains=["sub.example.com"], available=True, mode=EnumMode.PASSIVE),
             SourceResult(name="amass", available=False, error="not found", mode=EnumMode.ACTIVE),
         ],
     )
@@ -70,7 +70,7 @@ class TestToDict:
 
     def test_sources_include_mode(self) -> None:
         result = to_dict(_make_report())
-        passive_src = next(s for s in result["sources"] if s["name"] == "crt.sh")
+        passive_src = next(s for s in result["sources"] if s["name"] == "dnsrecon")
         active_src = next(s for s in result["sources"] if s["name"] == "amass")
         assert passive_src["mode"] == "passive"
         assert active_src["mode"] == "active"

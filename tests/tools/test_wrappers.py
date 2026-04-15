@@ -3,19 +3,17 @@ dnsrecon, gobuster_dns, ffuf)."""
 
 from __future__ import annotations
 
-import json
-from unittest.mock import MagicMock, mock_open, patch
+from unittest.mock import patch
 
 
-from subdomainenum.models import EnumMode
+from subdomainenum.models import EnumMode, SourceResult, VhostResult
 from subdomainenum.tools.amass import _parse_amass_output, run_amass
 from subdomainenum.tools.assetfinder import run_assetfinder
 from subdomainenum.tools.dnsrecon import run_dnsrecon
 from subdomainenum.tools.findomain import run_findomain
 from subdomainenum.tools.gobuster_dns import run_gobuster_dns
 from subdomainenum.tools.subfinder import run_subfinder
-from subdomainenum.tools.ffuf import _parse_ffuf_json, run_ffuf
-from subdomainenum.models import EnumMode, SourceResult, VhostResult
+from subdomainenum.tools.ffuf import _parse_ffuf_line, run_ffuf
 
 
 # ---------------------------------------------------------------------------
@@ -574,57 +572,47 @@ class TestRunGobusterDns:
 # ---------------------------------------------------------------------------
 
 
-def _make_mock_ntf(name: str = "/tmp/fake_ffuf.json") -> MagicMock:
-    """Return a NamedTemporaryFile context-manager mock with a fixed .name."""
-    mock_tf = MagicMock()
-    mock_tf.__enter__ = lambda s: s
-    mock_tf.__exit__ = MagicMock(return_value=False)
-    mock_tf.name = name
-    return mock_tf
+class TestParseFfufLine:
+    """Unit tests for the pure _parse_ffuf_line helper."""
 
-
-class TestParseFfufJson:
-    """Unit tests for the pure _parse_ffuf_json helper."""
-
-    def test_returns_vhost_result_for_non_filtered_status(self) -> None:
-        data = {"results": [{"status": 200, "input": {"FUZZ": "admin"}, "length": 512}]}
-        results = _parse_ffuf_json(data, "example.com", {404, 400})
-        assert len(results) == 1
-        assert isinstance(results[0], VhostResult)
+    def test_returns_vhost_result_for_match_line(self) -> None:
+        line = "admin   [Status: 200, Size: 512, Words: 5, Lines: 10, Duration: 5ms]"
+        result = _parse_ffuf_line(line, "example.com", {404, 400})
+        assert isinstance(result, VhostResult)
+        assert result.vhost == "admin.example.com"
 
     def test_constructs_vhost_fqdn(self) -> None:
-        data = {"results": [{"status": 200, "input": {"FUZZ": "mail"}, "length": 0}]}
-        results = _parse_ffuf_json(data, "example.com", {404})
-        assert results[0].vhost == "mail.example.com"
+        line = "mail   [Status: 200, Size: 0, Words: 1, Lines: 1, Duration: 5ms]"
+        result = _parse_ffuf_line(line, "example.com", {404})
+        assert result is not None
+        assert result.vhost == "mail.example.com"
 
     def test_captures_status_code_and_content_length(self) -> None:
-        data = {"results": [{"status": 301, "input": {"FUZZ": "www"}, "length": 8192}]}
-        results = _parse_ffuf_json(data, "example.com", {404})
-        assert results[0].status_code == 301
-        assert results[0].content_length == 8192
+        line = "www   [Status: 301, Size: 8192, Words: 3, Lines: 5, Duration: 10ms]"
+        result = _parse_ffuf_line(line, "example.com", {404})
+        assert result is not None
+        assert result.status_code == 301
+        assert result.content_length == 8192
 
     def test_filtered_status_excluded(self) -> None:
-        data = {
-            "results": [
-                {"status": 404, "input": {"FUZZ": "ghost"}, "length": 100},
-                {"status": 400, "input": {"FUZZ": "bad"}, "length": 50},
-            ]
-        }
-        results = _parse_ffuf_json(data, "example.com", {404, 400})
-        assert results == []
+        line = "ghost   [Status: 404, Size: 100, Words: 1, Lines: 1, Duration: 5ms]"
+        result = _parse_ffuf_line(line, "example.com", {404})
+        assert result is None
 
-    def test_skips_empty_fuzz_word(self) -> None:
-        data = {"results": [{"status": 200, "input": {"FUZZ": ""}, "length": 0}]}
-        results = _parse_ffuf_json(data, "example.com", {404})
-        assert results == []
+    def test_skips_non_match_lines(self) -> None:
+        line = " :: Method           : GET"
+        result = _parse_ffuf_line(line, "example.com", {404})
+        assert result is None
 
-    def test_empty_results_list(self) -> None:
-        results = _parse_ffuf_json({"results": []}, "example.com", {404})
-        assert results == []
+    def test_empty_fuzz_word_skipped(self) -> None:
+        line = "   [Status: 200, Size: 0, Words: 1, Lines: 1, Duration: 5ms]"
+        result = _parse_ffuf_line(line, "example.com", {404})
+        assert result is None
 
-    def test_missing_results_key(self) -> None:
-        results = _parse_ffuf_json({}, "example.com", {404})
-        assert results == []
+    def test_progress_line_skipped(self) -> None:
+        line = ":: Progress: [100/100] :: Job [1/1] :: 50 req/sec :: Duration: [0:00:02] :: Errors: 0 ::"
+        result = _parse_ffuf_line(line, "example.com", {404})
+        assert result is None
 
 
 class TestRunFfuf:
@@ -637,46 +625,32 @@ class TestRunFfuf:
         assert results == []
 
     def test_wordlist_in_command(self) -> None:
-        with patch("subdomainenum.tools.ffuf.run_tool", return_value=([], False)) as mock, \
-             patch("subdomainenum.tools.ffuf.tempfile.NamedTemporaryFile", return_value=_make_mock_ntf()), \
-             patch("builtins.open", mock_open(read_data="{}")), \
-             patch("subdomainenum.tools.ffuf.os.unlink"):
+        with patch("subdomainenum.tools.ffuf.run_tool", return_value=([], False)) as mock:
             run_ffuf("example.com", url="http://10.0.0.1", wordlist="/tmp/vhosts.txt")
             cmd = mock.call_args[0][0]
         assert "/tmp/vhosts.txt" in cmd
 
     def test_url_and_filter_codes_in_command(self) -> None:
-        with patch("subdomainenum.tools.ffuf.run_tool", return_value=([], False)) as mock, \
-             patch("subdomainenum.tools.ffuf.tempfile.NamedTemporaryFile", return_value=_make_mock_ntf()), \
-             patch("builtins.open", mock_open(read_data="{}")), \
-             patch("subdomainenum.tools.ffuf.os.unlink"):
+        with patch("subdomainenum.tools.ffuf.run_tool", return_value=([], False)) as mock:
             run_ffuf("example.com", url="http://10.0.0.1", wordlist="/tmp/w.txt")
             cmd = mock.call_args[0][0]
         assert "http://10.0.0.1" in cmd
         assert "-fc" in cmd
         assert "-noninteractive" in cmd
 
-    def test_json_output_flags_in_command(self) -> None:
-        """ffuf must use -of json -o <file> -s to write results to a file."""
-        with patch("subdomainenum.tools.ffuf.run_tool", return_value=([], False)) as mock, \
-             patch("subdomainenum.tools.ffuf.tempfile.NamedTemporaryFile", return_value=_make_mock_ntf("/tmp/out.json")), \
-             patch("builtins.open", mock_open(read_data="{}")), \
-             patch("subdomainenum.tools.ffuf.os.unlink"):
+    def test_no_json_file_flags_in_command(self) -> None:
+        """ffuf must NOT use -of, -s, or -o (stdout parsing replaces tempfile approach)."""
+        with patch("subdomainenum.tools.ffuf.run_tool", return_value=([], False)) as mock:
             run_ffuf("example.com", url="http://10.0.0.1", wordlist="/tmp/w.txt")
             cmd = mock.call_args[0][0]
-        assert "-of" in cmd
-        assert "json" in cmd
-        assert "-o" in cmd
-        assert "/tmp/out.json" in cmd
-        assert "-s" in cmd
+        assert "-of" not in cmd
+        assert "-s" not in cmd
+        assert "-o" not in cmd
         assert "-ac" in cmd
 
-    def test_returns_vhost_results_from_json_file(self) -> None:
-        json_data = {"results": [{"status": 200, "input": {"FUZZ": "admin"}, "length": 1024}]}
-        with patch("subdomainenum.tools.ffuf.run_tool"), \
-             patch("subdomainenum.tools.ffuf.tempfile.NamedTemporaryFile", return_value=_make_mock_ntf()), \
-             patch("builtins.open", mock_open(read_data=json.dumps(json_data))), \
-             patch("subdomainenum.tools.ffuf.os.unlink"):
+    def test_returns_vhost_results_from_stdout(self) -> None:
+        stdout_lines = ["admin   [Status: 200, Size: 1024, Words: 5, Lines: 10, Duration: 5ms]"]
+        with patch("subdomainenum.tools.ffuf.run_tool", return_value=(stdout_lines, False)):
             results = run_ffuf("example.com", url="http://10.0.0.1", wordlist="/tmp/w.txt")
         assert len(results) == 1
         assert isinstance(results[0], VhostResult)
@@ -684,62 +658,41 @@ class TestRunFfuf:
         assert results[0].status_code == 200
         assert results[0].content_length == 1024
 
-    def test_json_decode_error_returns_empty_list(self) -> None:
-        with patch("subdomainenum.tools.ffuf.run_tool"), \
-             patch("subdomainenum.tools.ffuf.tempfile.NamedTemporaryFile", return_value=_make_mock_ntf()), \
-             patch("builtins.open", mock_open(read_data="not valid json")), \
-             patch("subdomainenum.tools.ffuf.os.unlink"):
+    def test_non_match_lines_are_skipped(self) -> None:
+        stdout_lines = [
+            ":: Method           : GET",
+            "admin   [Status: 200, Size: 1024, Words: 5, Lines: 10, Duration: 5ms]",
+        ]
+        with patch("subdomainenum.tools.ffuf.run_tool", return_value=(stdout_lines, False)):
             results = run_ffuf("example.com", url="http://10.0.0.1", wordlist="/tmp/w.txt")
-        assert results == []
+        assert len(results) == 1
 
-    def test_file_not_found_returns_empty_list(self) -> None:
-        with patch("subdomainenum.tools.ffuf.run_tool"), \
-             patch("subdomainenum.tools.ffuf.tempfile.NamedTemporaryFile", return_value=_make_mock_ntf()), \
-             patch("builtins.open", side_effect=FileNotFoundError), \
-             patch("subdomainenum.tools.ffuf.os.unlink"):
-            results = run_ffuf("example.com", url="http://10.0.0.1", wordlist="/tmp/w.txt")
+    def test_filtered_status_excluded_in_run(self) -> None:
+        stdout_lines = ["ghost   [Status: 404, Size: 100, Words: 1, Lines: 1, Duration: 5ms]"]
+        with patch("subdomainenum.tools.ffuf.run_tool", return_value=(stdout_lines, False)):
+            results = run_ffuf("example.com", url="http://10.0.0.1", wordlist="/tmp/w.txt",
+                               filter_codes={404})
         assert results == []
 
     def test_cmd_cb_passed_to_run_tool(self) -> None:
         def cb(cmd: str) -> None:
             pass
-        with patch("subdomainenum.tools.ffuf.run_tool", return_value=([], False)) as mock, \
-             patch("subdomainenum.tools.ffuf.tempfile.NamedTemporaryFile", return_value=_make_mock_ntf()), \
-             patch("builtins.open", mock_open(read_data="{}")), \
-             patch("subdomainenum.tools.ffuf.os.unlink"):
+        with patch("subdomainenum.tools.ffuf.run_tool", return_value=([], False)) as mock:
             run_ffuf("example.com", url="http://10.0.0.1", wordlist="/tmp/w.txt", cmd_cb=cb)
         assert mock.call_args.kwargs.get("cmd_cb") is cb
 
     def test_ignore_returncode_passed_to_run_tool(self) -> None:
-        with patch("subdomainenum.tools.ffuf.run_tool", return_value=([], False)) as mock, \
-             patch("subdomainenum.tools.ffuf.tempfile.NamedTemporaryFile", return_value=_make_mock_ntf()), \
-             patch("builtins.open", mock_open(read_data="{}")), \
-             patch("subdomainenum.tools.ffuf.os.unlink"):
+        with patch("subdomainenum.tools.ffuf.run_tool", return_value=([], False)) as mock:
             run_ffuf("example.com", url="http://10.0.0.1", wordlist="/tmp/w.txt")
         assert mock.call_args.kwargs.get("ignore_returncode") is True
 
     def test_capture_stderr_passed_to_run_tool(self) -> None:
-        with patch("subdomainenum.tools.ffuf.run_tool", return_value=([], False)) as mock, \
-             patch("subdomainenum.tools.ffuf.tempfile.NamedTemporaryFile", return_value=_make_mock_ntf()), \
-             patch("builtins.open", mock_open(read_data="{}")), \
-             patch("subdomainenum.tools.ffuf.os.unlink"):
+        with patch("subdomainenum.tools.ffuf.run_tool", return_value=([], False)) as mock:
             run_ffuf("example.com", url="http://10.0.0.1", wordlist="/tmp/w.txt")
         assert mock.call_args.kwargs.get("capture_stderr") is True
 
-    def test_unlink_oserror_is_silently_ignored(self) -> None:
-        with patch("subdomainenum.tools.ffuf.run_tool"), \
-             patch("subdomainenum.tools.ffuf.tempfile.NamedTemporaryFile", return_value=_make_mock_ntf()), \
-             patch("builtins.open", mock_open(read_data="{}")), \
-             patch("subdomainenum.tools.ffuf.os.unlink", side_effect=OSError):
-            # Should not raise even when unlink fails
-            results = run_ffuf("example.com", url="http://10.0.0.1", wordlist="/tmp/w.txt")
-        assert results == []
-
-    def test_tempfile_is_deleted_after_run(self) -> None:
-        """Output tempfile is always cleaned up after the run."""
-        with patch("subdomainenum.tools.ffuf.run_tool"), \
-             patch("subdomainenum.tools.ffuf.tempfile.NamedTemporaryFile", return_value=_make_mock_ntf("/tmp/out.json")), \
-             patch("builtins.open", mock_open(read_data="{}")), \
-             patch("subdomainenum.tools.ffuf.os.unlink") as mock_unlink:
+    def test_ac_flag_in_command(self) -> None:
+        with patch("subdomainenum.tools.ffuf.run_tool", return_value=([], False)) as mock:
             run_ffuf("example.com", url="http://10.0.0.1", wordlist="/tmp/w.txt")
-        mock_unlink.assert_called_once_with("/tmp/out.json")
+            cmd = mock.call_args[0][0]
+        assert "-ac" in cmd
