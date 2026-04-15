@@ -11,6 +11,11 @@ from subdomainenum.models import VhostResult
 _DEFAULT_FILTER_CODES = {404, 400}
 
 _LINE_RE = re.compile(r"^(\S+)\s+\[Status:\s*(\d+),\s*Size:\s*(\d+)")
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+
+
+def _strip_ansi(s: str) -> str:
+    return _ANSI_RE.sub("", s)
 
 
 def _parse_ffuf_line(
@@ -27,6 +32,7 @@ def _parse_ffuf_line(
         ``None`` otherwise.
     :rtype: VhostResult | None
     """
+    line = _strip_ansi(line).strip()
     m = _LINE_RE.match(line)
     if not m:
         return None

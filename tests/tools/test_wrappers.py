@@ -694,6 +694,33 @@ class TestParseFfufLine:
         result = _parse_ffuf_line(line, "example.com", {404})
         assert result is None
 
+    def test_ansi_erase_line_prefix_stripped(self) -> None:
+        """ffuf emits \\x1b[2K before result lines; the ANSI code must not pollute the vhost name."""
+        line = "\x1b[2Kwww   [Status: 200, Size: 512, Words: 5, Lines: 10, Duration: 5ms]"
+        result = _parse_ffuf_line(line, "example.com", {404})
+        assert result is not None
+        assert result.vhost == "www.example.com"
+
+    def test_ansi_reset_code_stripped(self) -> None:
+        line = "\x1b[0madmin   [Status: 301, Size: 0, Words: 1, Lines: 1, Duration: 5ms]"
+        result = _parse_ffuf_line(line, "example.com", {404})
+        assert result is not None
+        assert result.vhost == "admin.example.com"
+
+    def test_multiple_ansi_codes_stripped(self) -> None:
+        line = "\x1b[2K\x1b[0mmail   [Status: 200, Size: 1024, Words: 3, Lines: 5, Duration: 5ms]"
+        result = _parse_ffuf_line(line, "example.com", {404})
+        assert result is not None
+        assert result.vhost == "mail.example.com"
+        assert result.status_code == 200
+        assert result.content_length == 1024
+
+    def test_ansi_only_line_skipped(self) -> None:
+        """A line that is only ANSI codes with no match content should return None."""
+        line = "\x1b[2K\x1b[0m"
+        result = _parse_ffuf_line(line, "example.com", {404})
+        assert result is None
+
 
 class TestRunFfuf:
     def test_tool_missing_returns_empty_list(self) -> None:
