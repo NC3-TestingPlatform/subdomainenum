@@ -509,3 +509,206 @@ class TestResolveAll:
             results = _resolve_all(["z.example.com", "a.example.com"], {})
         assert results[0].fqdn == "a.example.com"
         assert results[1].fqdn == "z.example.com"
+
+
+# ---------------------------------------------------------------------------
+# Phase-aware callback keys (ALL mode)
+# ---------------------------------------------------------------------------
+
+
+class TestPhaseAwareKeys:
+    """Verify that in ALL mode, shared tools get '<name> passive'/'<name> active' keys."""
+
+    def _passive_finish_names(self, overall_mode: EnumMode | None) -> list[str]:
+        """Run _run_passive and collect the source-name arguments passed to finish_cb."""
+        finish_names: list[str] = []
+        src = _make_source("sub.example.com")
+        with (
+            patch("subdomainenum.assessor.run_subfinder", return_value=src),
+            patch("subdomainenum.assessor.run_amass", return_value=src),
+            patch("subdomainenum.assessor.run_findomain", return_value=src),
+            patch("subdomainenum.assessor.run_assetfinder", return_value=src),
+            patch("subdomainenum.assessor.run_dnsrecon", return_value=src),
+        ):
+            _run_passive(
+                "example.com",
+                progress_cb=None,
+                finish_cb=lambda name, err, timed_out: finish_names.append(name),
+                overall_mode=overall_mode,
+            )
+        return finish_names
+
+    def _active_finish_names(self, overall_mode: EnumMode | None) -> list[str]:
+        """Run _run_active and collect the source-name arguments passed to finish_cb."""
+        finish_names: list[str] = []
+        src = _make_source("sub.example.com")
+        with (
+            patch("subdomainenum.assessor.run_amass", return_value=src),
+            patch("subdomainenum.assessor.run_dnsrecon", return_value=src),
+            patch("subdomainenum.assessor.run_gobuster_dns", return_value=src),
+        ):
+            _run_active(
+                "example.com",
+                wordlist="/tmp/w.txt",
+                url=None,
+                progress_cb=None,
+                finish_cb=lambda name, err, timed_out: finish_names.append(name),
+                overall_mode=overall_mode,
+            )
+        return finish_names
+
+    # --- passive phase ---
+
+    def test_passive_all_mode_amass_key_is_suffixed(self) -> None:
+        names = self._passive_finish_names(EnumMode.ALL)
+        assert "amass passive" in names
+        assert "amass" not in names
+
+    def test_passive_all_mode_dnsrecon_key_is_suffixed(self) -> None:
+        names = self._passive_finish_names(EnumMode.ALL)
+        assert "dnsrecon passive" in names
+        assert "dnsrecon" not in names
+
+    def test_passive_all_mode_other_tools_keep_plain_keys(self) -> None:
+        names = self._passive_finish_names(EnumMode.ALL)
+        assert "subfinder" in names
+        assert "findomain" in names
+        assert "assetfinder" in names
+
+    def test_passive_passive_mode_plain_keys(self) -> None:
+        """In PASSIVE-only mode no suffix is added."""
+        names = self._passive_finish_names(EnumMode.PASSIVE)
+        assert "amass" in names
+        assert "dnsrecon" in names
+        assert "amass passive" not in names
+        assert "dnsrecon passive" not in names
+
+    def test_passive_no_overall_mode_plain_keys(self) -> None:
+        """Without overall_mode (None) no suffix is added."""
+        names = self._passive_finish_names(None)
+        assert "amass" in names
+        assert "dnsrecon" in names
+
+    # --- active phase ---
+
+    def test_active_all_mode_amass_key_is_suffixed(self) -> None:
+        names = self._active_finish_names(EnumMode.ALL)
+        assert "amass active" in names
+        assert "amass" not in names
+
+    def test_active_all_mode_dnsrecon_key_is_suffixed(self) -> None:
+        names = self._active_finish_names(EnumMode.ALL)
+        assert "dnsrecon active" in names
+        assert "dnsrecon" not in names
+
+    def test_active_all_mode_other_tools_keep_plain_keys(self) -> None:
+        names = self._active_finish_names(EnumMode.ALL)
+        assert "gobuster" in names
+        assert "ffuf" in names
+
+    def test_active_active_mode_plain_keys(self) -> None:
+        """In ACTIVE-only mode no suffix is added."""
+        names = self._active_finish_names(EnumMode.ACTIVE)
+        assert "amass" in names
+        assert "dnsrecon" in names
+        assert "amass active" not in names
+        assert "dnsrecon active" not in names
+
+    def test_active_no_overall_mode_plain_keys(self) -> None:
+        """Without overall_mode (None) no suffix is added."""
+        names = self._active_finish_names(None)
+        assert "amass" in names
+        assert "dnsrecon" in names
+
+    # --- debug_cb key routing in ALL mode ---
+
+    def test_passive_all_mode_debug_cb_uses_suffixed_key_for_amass(self) -> None:
+        debug_calls: list[tuple] = []
+
+        def fake_amass(domain, *, line_cb=None, **kwargs):
+            if line_cb:
+                line_cb("output line")
+            return _make_source()
+
+        src = _make_source()
+        with (
+            patch("subdomainenum.assessor.run_subfinder", return_value=src),
+            patch("subdomainenum.assessor.run_amass", side_effect=fake_amass),
+            patch("subdomainenum.assessor.run_findomain", return_value=src),
+            patch("subdomainenum.assessor.run_assetfinder", return_value=src),
+            patch("subdomainenum.assessor.run_dnsrecon", return_value=src),
+        ):
+            _run_passive(
+                "example.com",
+                progress_cb=None,
+                debug_cb=lambda s, line: debug_calls.append((s, line)),
+                overall_mode=EnumMode.ALL,
+            )
+        assert ("amass passive", "output line") in debug_calls
+
+    def test_active_all_mode_debug_cb_uses_suffixed_key_for_amass(self) -> None:
+        debug_calls: list[tuple] = []
+
+        def fake_amass(domain, *, mode=None, wordlist=None, line_cb=None, **kwargs):
+            if line_cb:
+                line_cb("output line")
+            return _make_source()
+
+        src = _make_source()
+        with (
+            patch("subdomainenum.assessor.run_amass", side_effect=fake_amass),
+            patch("subdomainenum.assessor.run_dnsrecon", return_value=src),
+            patch("subdomainenum.assessor.run_gobuster_dns", return_value=src),
+        ):
+            _run_active(
+                "example.com",
+                wordlist="/tmp/w.txt",
+                url=None,
+                progress_cb=None,
+                debug_cb=lambda s, line: debug_calls.append((s, line)),
+                overall_mode=EnumMode.ALL,
+            )
+        assert ("amass active", "output line") in debug_calls
+
+    # --- assess() wires overall_mode correctly ---
+
+    def test_assess_passes_overall_mode_to_passive(self) -> None:
+        with (
+            patch("subdomainenum.assessor._run_passive", return_value=[]) as mock_passive,
+            patch("subdomainenum.assessor._resolve_all", return_value=[]),
+        ):
+            assess("example.com", mode=EnumMode.PASSIVE)
+        _, kwargs = mock_passive.call_args
+        assert kwargs.get("overall_mode") == EnumMode.PASSIVE
+
+    def test_assess_passes_overall_mode_all_to_passive(self) -> None:
+        with (
+            patch("subdomainenum.assessor._run_passive", return_value=[]) as mock_passive,
+            patch("subdomainenum.assessor._run_active", return_value=([], [])),
+            patch("subdomainenum.assessor._resolve_all", return_value=[]),
+            patch("subdomainenum.assessor.resolve_ips", return_value=[]),
+        ):
+            assess("example.com", mode=EnumMode.ALL, wordlist="/tmp/w.txt")
+        _, kwargs = mock_passive.call_args
+        assert kwargs.get("overall_mode") == EnumMode.ALL
+
+    def test_assess_passes_overall_mode_all_to_active(self) -> None:
+        with (
+            patch("subdomainenum.assessor._run_passive", return_value=[]),
+            patch("subdomainenum.assessor._run_active", return_value=([], [])) as mock_active,
+            patch("subdomainenum.assessor._resolve_all", return_value=[]),
+            patch("subdomainenum.assessor.resolve_ips", return_value=[]),
+        ):
+            assess("example.com", mode=EnumMode.ALL, wordlist="/tmp/w.txt")
+        _, kwargs = mock_active.call_args
+        assert kwargs.get("overall_mode") == EnumMode.ALL
+
+    def test_assess_passes_overall_mode_active_to_active(self) -> None:
+        with (
+            patch("subdomainenum.assessor._run_active", return_value=([], [])) as mock_active,
+            patch("subdomainenum.assessor._resolve_all", return_value=[]),
+            patch("subdomainenum.assessor.resolve_ips", return_value=[]),
+        ):
+            assess("example.com", mode=EnumMode.ACTIVE, wordlist="/tmp/w.txt")
+        _, kwargs = mock_active.call_args
+        assert kwargs.get("overall_mode") == EnumMode.ACTIVE

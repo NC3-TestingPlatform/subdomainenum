@@ -37,6 +37,7 @@ def _run_passive(
     debug_cb: Callable[[str, str], None] | None = None,
     cmd_cb: Callable[[str, str], None] | None = None,
     finish_cb: Callable[[str, str | None, bool], None] | None = None,
+    overall_mode: EnumMode | None = None,
 ) -> list[SourceResult]:
     """Run all passive enumeration sources concurrently.
 
@@ -48,6 +49,9 @@ def _run_passive(
         called as ``cmd_cb(source_name, cmd_string)``.
     :param finish_cb: Optional callback called when a source completes,
         called as ``finish_cb(source_name, error_or_none, timed_out)``.
+    :param overall_mode: The mode passed to :func:`assess`; when ``EnumMode.ALL``
+        tools that also run in the active phase use a ``"<name> passive"`` key so
+        the debug log shows a distinct section for each phase.
     :returns: List of :class:`~subdomainenum.models.SourceResult` objects.
     """
 
@@ -55,15 +59,23 @@ def _run_passive(
         if progress_cb:
             progress_cb(msg)
 
+    def _key(name: str) -> str:
+        """Return the callback key for *name*, appending a phase suffix in ALL mode."""
+        if overall_mode == EnumMode.ALL and name in ("amass", "dnsrecon"):
+            return f"{name} passive"
+        return name
+
     def _line_cb(source: str) -> Callable[[str], None] | None:
         if debug_cb is None:
             return None
-        return lambda line: debug_cb(source, line)
+        key = _key(source)
+        return lambda line: debug_cb(key, line)
 
     def _cmd_cb(source: str) -> Callable[[str], None] | None:
         if cmd_cb is None:
             return None
-        return lambda cmd: cmd_cb(source, cmd)
+        key = _key(source)
+        return lambda cmd: cmd_cb(key, cmd)
 
     sources: list[SourceResult] = []
 
@@ -103,11 +115,11 @@ def _run_passive(
                 result.mode = EnumMode.PASSIVE
                 sources.append(result)
                 if finish_cb:
-                    finish_cb(source_name, result.error, result.timed_out)
+                    finish_cb(_key(source_name), result.error, result.timed_out)
             except Exception as exc:
                 sources.append(SourceResult(name=source_name, error=str(exc), available=False, mode=EnumMode.PASSIVE))
                 if finish_cb:
-                    finish_cb(source_name, str(exc), False)
+                    finish_cb(_key(source_name), str(exc), False)
 
     return sources
 
@@ -120,6 +132,7 @@ def _run_active(
     debug_cb: Callable[[str, str], None] | None = None,
     cmd_cb: Callable[[str, str], None] | None = None,
     finish_cb: Callable[[str, str | None, bool], None] | None = None,
+    overall_mode: EnumMode | None = None,
 ) -> tuple[list[SourceResult], list[VhostResult]]:
     """Run all active enumeration sources.
 
@@ -133,6 +146,9 @@ def _run_active(
         called as ``cmd_cb(source_name, cmd_string)``.
     :param finish_cb: Optional callback called when a source completes,
         called as ``finish_cb(source_name, error_or_none, timed_out)``.
+    :param overall_mode: The mode passed to :func:`assess`; when ``EnumMode.ALL``
+        tools that also run in the passive phase use a ``"<name> active"`` key so
+        the debug log shows a distinct section for each phase.
     :returns: Tuple of (sources, vhosts).
     """
 
@@ -140,15 +156,23 @@ def _run_active(
         if progress_cb:
             progress_cb(msg)
 
+    def _key(name: str) -> str:
+        """Return the callback key for *name*, appending a phase suffix in ALL mode."""
+        if overall_mode == EnumMode.ALL and name in ("amass", "dnsrecon"):
+            return f"{name} active"
+        return name
+
     def _line_cb(source: str) -> Callable[[str], None] | None:
         if debug_cb is None:
             return None
-        return lambda line: debug_cb(source, line)
+        key = _key(source)
+        return lambda line: debug_cb(key, line)
 
     def _cmd_cb(source: str) -> Callable[[str], None] | None:
         if cmd_cb is None:
             return None
-        return lambda cmd: cmd_cb(source, cmd)
+        key = _key(source)
+        return lambda cmd: cmd_cb(key, cmd)
 
     sources: list[SourceResult] = []
     vhosts: list[VhostResult] = []
@@ -158,32 +182,32 @@ def _run_active(
     result.mode = EnumMode.ACTIVE
     sources.append(result)
     if finish_cb:
-        finish_cb("amass", result.error, result.timed_out)
+        finish_cb(_key("amass"), result.error, result.timed_out)
 
     _cb("Running dnsrecon (active)…")
     result = run_dnsrecon(domain, mode=EnumMode.ACTIVE, wordlist=wordlist, line_cb=_line_cb("dnsrecon"), cmd_cb=_cmd_cb("dnsrecon"))
     result.mode = EnumMode.ACTIVE
     sources.append(result)
     if finish_cb:
-        finish_cb("dnsrecon", result.error, result.timed_out)
+        finish_cb(_key("dnsrecon"), result.error, result.timed_out)
 
     _cb("Running gobuster dns…")
     result = run_gobuster_dns(domain, wordlist=wordlist, line_cb=_line_cb("gobuster"), cmd_cb=_cmd_cb("gobuster"))
     result.mode = EnumMode.ACTIVE
     sources.append(result)
     if finish_cb:
-        finish_cb("gobuster", result.error, result.timed_out)
+        finish_cb(_key("gobuster"), result.error, result.timed_out)
 
     if url:
         _cb("Running ffuf (vhost fuzzing)…")
         vhosts = run_ffuf(domain, url=url, wordlist=wordlist, line_cb=_line_cb("ffuf"), cmd_cb=_cmd_cb("ffuf"))
         sources.append(SourceResult(name="ffuf", subdomains=[v.vhost for v in vhosts], mode=EnumMode.ACTIVE))
         if finish_cb:
-            finish_cb("ffuf", None, False)
+            finish_cb(_key("ffuf"), None, False)
     else:
         sources.append(SourceResult(name="ffuf", available=False, error="no URL resolved", mode=EnumMode.ACTIVE))
         if finish_cb:
-            finish_cb("ffuf", "no URL resolved", False)
+            finish_cb(_key("ffuf"), "no URL resolved", False)
 
     return sources, vhosts
 
@@ -265,7 +289,7 @@ def assess(
 
     if mode in (EnumMode.PASSIVE, EnumMode.ALL):
         _cb("Starting passive enumeration…")
-        all_sources.extend(_run_passive(domain, progress_cb, debug_cb=debug_cb, cmd_cb=cmd_cb, finish_cb=finish_cb))
+        all_sources.extend(_run_passive(domain, progress_cb, debug_cb=debug_cb, cmd_cb=cmd_cb, finish_cb=finish_cb, overall_mode=mode))
 
     if mode in (EnumMode.ACTIVE, EnumMode.ALL):
         _cb("Starting active enumeration…")
@@ -273,7 +297,7 @@ def assess(
             ips = resolve_ips(domain)
             if ips:
                 url = f"http://{ips[0]}"
-        active_sources, vhosts = _run_active(domain, wordlist=wordlist, url=url, progress_cb=progress_cb, debug_cb=debug_cb, cmd_cb=cmd_cb, finish_cb=finish_cb)  # type: ignore[arg-type]
+        active_sources, vhosts = _run_active(domain, wordlist=wordlist, url=url, progress_cb=progress_cb, debug_cb=debug_cb, cmd_cb=cmd_cb, finish_cb=finish_cb, overall_mode=mode)  # type: ignore[arg-type]
         all_sources.extend(active_sources)
         all_vhosts.extend(vhosts)
 
