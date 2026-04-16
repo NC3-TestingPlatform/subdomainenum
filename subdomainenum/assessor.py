@@ -127,7 +127,7 @@ def _run_passive(
 def _run_active(
     domain: str,
     wordlist: str,
-    url: str | None,
+    urls: list[str],
     progress_cb: Callable[[str], None] | None,
     debug_cb: Callable[[str, str], None] | None = None,
     cmd_cb: Callable[[str, str], None] | None = None,
@@ -138,7 +138,8 @@ def _run_active(
 
     :param domain: Target base domain.
     :param wordlist: Path to the DNS wordlist.
-    :param url: Target URL for vhost fuzzing (wfuzz); skipped if ``None``.
+    :param urls: Target URLs for vhost fuzzing; one ``run_ffuf`` call is made per URL.
+        Pass an empty list to skip ffuf entirely.
     :param progress_cb: Optional callback for progress messages.
     :param debug_cb: Optional callback for real-time tool output lines,
         called as ``debug_cb(source_name, line)``.
@@ -175,7 +176,6 @@ def _run_active(
         return lambda cmd: cmd_cb(key, cmd)
 
     sources: list[SourceResult] = []
-    vhosts: list[VhostResult] = []
 
     _cb("Running amass (active)…")
     result = run_amass(domain, mode=EnumMode.ACTIVE, wordlist=wordlist, line_cb=_line_cb("amass"), cmd_cb=_cmd_cb("amass"))
@@ -198,18 +198,31 @@ def _run_active(
     if finish_cb:
         finish_cb(_key("gobuster"), result.error, result.timed_out)
 
-    if url:
-        _cb("Running ffuf (vhost fuzzing)…")
-        vhosts = run_ffuf(domain, url=url, wordlist=wordlist, line_cb=_line_cb("ffuf"), cmd_cb=_cmd_cb("ffuf"))
-        sources.append(SourceResult(name="ffuf", subdomains=[v.vhost for v in vhosts], mode=EnumMode.ACTIVE))
-        if finish_cb:
-            finish_cb(_key("ffuf"), None, False)
+    all_vhosts: list[VhostResult] = []
+    if urls:
+        _cb(f"Running ffuf (vhost fuzzing) against {len(urls)} IP(s)…")
+        seen_vhosts: set[str] = set()
+        for i, target_url in enumerate(urls):
+            ffuf_key = f"ffuf {i + 1}" if len(urls) > 1 else "ffuf"
+            _cb(f"  ffuf → {target_url}")
+            hits = run_ffuf(
+                domain, url=target_url, wordlist=wordlist,
+                line_cb=(lambda line, k=ffuf_key: debug_cb(k, line)) if debug_cb is not None else None,
+                cmd_cb=(lambda c, k=ffuf_key: cmd_cb(k, c)) if cmd_cb is not None else None,
+            )
+            if finish_cb:
+                finish_cb(ffuf_key, None, False)
+            for v in hits:
+                if v.vhost not in seen_vhosts:
+                    seen_vhosts.add(v.vhost)
+                    all_vhosts.append(v)
+        sources.append(SourceResult(name="ffuf", subdomains=[v.vhost for v in all_vhosts], mode=EnumMode.ACTIVE))
     else:
         sources.append(SourceResult(name="ffuf", available=False, error="no URL resolved", mode=EnumMode.ACTIVE))
         if finish_cb:
-            finish_cb(_key("ffuf"), "no URL resolved", False)
+            finish_cb("ffuf", "no URL resolved", False)
 
-    return sources, vhosts
+    return sources, all_vhosts
 
 
 def _resolve_all(
@@ -293,11 +306,32 @@ def assess(
 
     if mode in (EnumMode.ACTIVE, EnumMode.ALL):
         _cb("Starting active enumeration…")
-        if url is None:
-            ips = resolve_ips(domain)
-            if ips:
-                url = f"http://{ips[0]}"
-        active_sources, vhosts = _run_active(domain, wordlist=wordlist, url=url, progress_cb=progress_cb, debug_cb=debug_cb, cmd_cb=cmd_cb, finish_cb=finish_cb, overall_mode=mode)  # type: ignore[arg-type]
+        if url is not None:
+            urls: list[str] = [url]
+        else:
+            candidate_ips: list[str] = resolve_ips(domain)
+            if mode == EnumMode.ALL and all_sources:
+                passive_fqdns: list[str] = list({
+                    sub for src in all_sources for sub in src.subdomains
+                })
+                if passive_fqdns:
+                    with ThreadPoolExecutor(max_workers=min(50, len(passive_fqdns))) as exc:
+                        extra_ip_lists = list(exc.map(resolve_ips, passive_fqdns))
+                    for ip_list in extra_ip_lists:
+                        candidate_ips.extend(ip_list)
+            seen_ips: set[str] = set()
+            unique_ips: list[str] = []
+            for ip in candidate_ips:
+                if ip not in seen_ips:
+                    seen_ips.add(ip)
+                    formatted = f"[{ip}]" if ":" in ip else ip
+                    unique_ips.append(f"http://{formatted}")
+            urls = unique_ips
+        active_sources, vhosts = _run_active(
+            domain, wordlist=wordlist, urls=urls,
+            progress_cb=progress_cb, debug_cb=debug_cb,
+            cmd_cb=cmd_cb, finish_cb=finish_cb, overall_mode=mode,
+        )
         all_sources.extend(active_sources)
         all_vhosts.extend(vhosts)
 
