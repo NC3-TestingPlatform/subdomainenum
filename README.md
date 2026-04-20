@@ -13,7 +13,7 @@ $ subdomainenum check example.com
 ```
 
 ![Python](https://img.shields.io/badge/python-%3E%3D3.11-blue)
-![Tests](https://img.shields.io/badge/tests-341%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-360%20passing-brightgreen)
 ![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)
 ![License](https://img.shields.io/badge/license-GPLv3-lightgrey)
 
@@ -42,7 +42,7 @@ $ subdomainenum check example.com
 | **amass**          | Passive | Runs `amass enum -d domain`; parses v4 graph-format output to extract FQDNs         |
 | **findomain**      | Passive | Runs `findomain --target domain --quiet`                                             |
 | **assetfinder**    | Passive | Runs `assetfinder --subs-only domain`                                                |
-| **dnsrecon**       | Passive + Active | Passive: `std,srv` with Bing/Yandex/crt.sh (`-b -y -k`); Active: `brt` with AXFR/DNSSEC zone walk (`-a -z`) |
+| **dnsrecon**       | Passive + Active | Passive: `std,srv` with Bing/Yandex/crt.sh (`-b -y -k`), SPF reverse + deep whois (`-s -w`); adds `snoop` (NS cache-snoop) when `--wordlist` is supplied; adds `--shodan --shodan-active` when `SHODAN_API_KEY` is in the environment. Active: `brt` with AXFR/DNSSEC zone walk (`-a -z`) |
 | **gobuster dns**   | Active  | Brute-forces DNS with a wordlist (`gobuster dns --domain domain -w wordlist`)        |
 | **ffuf**           | Active  | Fuzzes virtual hosts via the `Host` header against a target URL                      |
 | **DNS resolution** | —       | All discovered FQDNs are resolved (A + AAAA) in parallel with a configurable timeout |
@@ -95,7 +95,7 @@ Run `subdomainenum info` to check which tools are detected on your `$PATH`:
 | amass       | `go install github.com/owasp-amass/amass/v4/...@latest`                    |
 | findomain   | Download from https://github.com/Findomain/Findomain/releases              |
 | assetfinder | `go install github.com/tomnomnom/assetfinder@latest`                       |
-| dnsrecon    | `apt install dnsrecon` / `pip install dnsrecon`                            |
+| dnsrecon    | `pip install git+https://github.com/darkoperator/dnsrecon.git@master` (installed from source in the Docker image) |
 | gobuster    | `go install github.com/OJ/gobuster/v3@latest`                              |
 | ffuf        | `go install github.com/ffuf/ffuf/v2@latest`                                |
 
@@ -346,7 +346,7 @@ pytest tests/test_assessor.py -v
 pytest tests/test_cli.py::TestCheckCommand -v
 ```
 
-The test suite has **341 tests** and achieves **100% coverage** across all modules.
+The test suite has **360 tests** and achieves **100% coverage** across all modules.
 
 All DNS I/O (`dns.resolver.Resolver.resolve`), TLS
 sockets, and subprocess calls are mocked at the boundary — no test touches a real

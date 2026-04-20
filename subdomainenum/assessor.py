@@ -42,6 +42,7 @@ def _run_passive(
     cmd_cb: Callable[[str, str], None] | None = None,
     finish_cb: Callable[[str, str | None, bool], None] | None = None,
     overall_mode: EnumMode | None = None,
+    wordlist: str | None = None,
 ) -> list[ToolResult]:
     """Run all passive enumeration tools concurrently.
 
@@ -56,6 +57,9 @@ def _run_passive(
     :param overall_mode: The mode passed to :func:`assess`; when ``EnumMode.ALL``
         tools that also run in the active phase use a ``"<name> passive"`` key so
         the debug log shows a distinct section for each phase.
+    :param wordlist: Optional DNS wordlist. When provided, dnsrecon's passive
+        invocation adds the ``snoop`` type to cache-snoop the domain's NS for
+        each wordlist entry. Ignored by every other passive source.
     :returns: List of :class:`~subdomainenum.models.ToolResult` objects.
     """
 
@@ -101,7 +105,10 @@ def _run_passive(
 
     def _run_dnsrecon_passive() -> ToolResult:
         _cb("Running dnsrecon (passive)…")
-        return run_dnsrecon(domain, mode=EnumMode.PASSIVE, line_cb=_line_cb("dnsrecon"), cmd_cb=_cmd_cb("dnsrecon"))
+        return run_dnsrecon(
+            domain, mode=EnumMode.PASSIVE, wordlist=wordlist,
+            line_cb=_line_cb("dnsrecon"), cmd_cb=_cmd_cb("dnsrecon"),
+        )
 
     tool_tasks: dict[str, Callable[[], ToolResult]] = {
         "subfinder": _run_subfinder,
@@ -447,7 +454,9 @@ def assess(
 
     :param domain: Target base domain (e.g. ``"example.com"``).
     :param mode: Enumeration strategy – ``passive``, ``active``, or ``all``.
-    :param wordlist: Path to wordlist required for active/all modes.
+    :param wordlist: Path to wordlist. Required for active/all modes; optional
+        for passive mode, where it unlocks dnsrecon's ``snoop`` cache-snoop of
+        the domain's authoritative NS.
     :param url: Target URL for ffuf vhost fuzzing (optional).
     :param timeout: DNS resolution timeout per query in seconds.
     :param progress_cb: Optional callback called with progress strings.
@@ -477,6 +486,7 @@ def assess(
         all_tools.extend(_run_passive(
             domain, progress_cb,
             debug_cb=debug_cb, cmd_cb=cmd_cb, finish_cb=finish_cb, overall_mode=mode,
+            wordlist=wordlist,
         ))
 
     elif mode == EnumMode.ACTIVE:
@@ -496,6 +506,7 @@ def assess(
             f_passive = outer.submit(
                 _run_passive, domain, progress_cb,
                 debug_cb=debug_cb, cmd_cb=cmd_cb, finish_cb=finish_cb, overall_mode=mode,
+                wordlist=wordlist,
             )
             f_active_enum = outer.submit(
                 _run_active_enum, domain,

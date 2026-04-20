@@ -390,6 +390,32 @@ class TestRunPassive:
         assert len(error_results) == 1
         assert error_results[0].mode == EnumMode.PASSIVE
 
+    def test_wordlist_forwarded_to_dnsrecon(self) -> None:
+        """When a wordlist is supplied, _run_passive threads it into run_dnsrecon."""
+        src = _make_source()
+        with (
+            patch("subdomainenum.assessor.run_subfinder", return_value=src),
+            patch("subdomainenum.assessor.run_amass", return_value=src),
+            patch("subdomainenum.assessor.run_findomain", return_value=src),
+            patch("subdomainenum.assessor.run_assetfinder", return_value=src),
+            patch("subdomainenum.assessor.run_dnsrecon", return_value=src) as mock_dnsrecon,
+        ):
+            _run_passive("example.com", progress_cb=None, wordlist="/tmp/snoop.txt")
+        assert mock_dnsrecon.call_args.kwargs.get("wordlist") == "/tmp/snoop.txt"
+
+    def test_wordlist_defaults_to_none_for_dnsrecon(self) -> None:
+        """Omitting wordlist means dnsrecon's passive call receives wordlist=None."""
+        src = _make_source()
+        with (
+            patch("subdomainenum.assessor.run_subfinder", return_value=src),
+            patch("subdomainenum.assessor.run_amass", return_value=src),
+            patch("subdomainenum.assessor.run_findomain", return_value=src),
+            patch("subdomainenum.assessor.run_assetfinder", return_value=src),
+            patch("subdomainenum.assessor.run_dnsrecon", return_value=src) as mock_dnsrecon,
+        ):
+            _run_passive("example.com", progress_cb=None)
+        assert mock_dnsrecon.call_args.kwargs.get("wordlist") is None
+
 
 # ---------------------------------------------------------------------------
 # _run_active

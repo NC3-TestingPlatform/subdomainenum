@@ -106,7 +106,14 @@ def check(
     ] = EnumMode.ALL,
     wordlist: Annotated[
         Optional[str],
-        typer.Option("--wordlist", "-w", help="Path to DNS wordlist (required for active/all modes)."),
+        typer.Option(
+            "--wordlist",
+            "-w",
+            help=(
+                "Path to DNS wordlist. Required for active/all modes; optional in "
+                "passive mode, where it enables dnsrecon's NS cache-snoop."
+            ),
+        ),
     ] = None,
     url: Annotated[
         Optional[str],
