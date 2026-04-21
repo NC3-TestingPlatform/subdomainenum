@@ -161,15 +161,22 @@ def _run_active_enum(
     overall_mode: EnumMode | None = None,
     fqdn_cb: Callable[[str], None] | None = None,
 ) -> list[ToolResult]:
-    """Run the non-ffuf active tools (amass, gobuster) in parallel.
+    """Run the non-ffuf active tools in parallel.
 
-    dnsrecon is intentionally absent from the active pool: its ``brt`` type
-    has been dropped in favour of ``gobuster dns`` (faster, higher
-    concurrency), and its remaining ``std,srv`` types are already covered by
-    the passive invocation. Running it again would produce no new data.
+    Tool mix depends on *overall_mode*:
+
+    - In ``ALL`` mode the pool is **amass + gobuster**. dnsrecon is omitted
+      because it already runs in the passive phase with ``-t std,srv,snoop``;
+      re-running it actively would duplicate work without producing new data
+      (its ``brt`` type has been replaced by ``gobuster dns``).
+    - In ``ACTIVE`` mode (or when *overall_mode* is ``None``) the pool is
+      **amass + gobuster + dnsrecon**. dnsrecon runs with ``-t std,srv -a -z``
+      so AXFR zone transfer and DNSSEC zone-walk enumeration are still
+      exercised in the active-only path where the passive pool never runs.
 
     :param domain: Target base domain.
-    :param wordlist: Path to the DNS wordlist.
+    :param wordlist: Path to the DNS wordlist (consumed by gobuster;
+        dnsrecon silently ignores it in ACTIVE mode).
     :param progress_cb: Optional callback for progress messages.
     :param debug_cb: Optional callback for real-time tool output lines,
         called as ``debug_cb(tool_name, line)``.
@@ -178,8 +185,8 @@ def _run_active_enum(
     :param finish_cb: Optional callback called when a tool completes,
         called as ``finish_cb(tool_name, error_or_none, timed_out)``.
     :param overall_mode: The mode passed to :func:`assess`; when ``EnumMode.ALL``
-        tools that also run in the passive phase use a ``"<name> active"`` key so
-        the debug log shows a distinct section for each phase.
+        ``amass`` uses the ``"amass active"`` key so the debug log shows a
+        distinct section for each phase.
     :returns: List of :class:`~subdomainenum.models.ToolResult`.
     """
 
@@ -222,10 +229,24 @@ def _run_active_enum(
             fqdn_cb=fqdn_cb,
         )
 
+    def _run_dnsrecon_active() -> ToolResult:
+        _cb("Running dnsrecon (active)…")
+        return run_dnsrecon(
+            domain, mode=EnumMode.ACTIVE,
+            line_cb=_line_cb("dnsrecon"), cmd_cb=_cmd_cb("dnsrecon"),
+            fqdn_cb=fqdn_cb,
+        )
+
     tool_tasks: dict[str, Callable[[], ToolResult]] = {
         "amass": _run_amass_active,
         "gobuster": _run_gobuster,
     }
+    # Only add dnsrecon to the active pool when ALL mode is NOT in effect.
+    # In ALL mode dnsrecon already runs passively; in ACTIVE-only mode the
+    # passive pool is skipped, so we need it here for -a (AXFR) and -z
+    # (DNSSEC zone walk) coverage.
+    if overall_mode != EnumMode.ALL:
+        tool_tasks["dnsrecon"] = _run_dnsrecon_active
     with ThreadPoolExecutor(max_workers=len(tool_tasks)) as pool:
         futures = {pool.submit(fn): name for name, fn in tool_tasks.items()}
         for fut in as_completed(futures):
@@ -481,9 +502,12 @@ def assess(
 ) -> EnumReport:
     """Run subdomain enumeration for *domain* and return an :class:`~subdomainenum.models.EnumReport`.
 
-    In ``ALL`` mode, the 5 passive tools and the 3 non-ffuf active tools run
-    concurrently in two pools submitted to an outer executor; ffuf runs after
-    both pools drain so it can target IPs resolved from passive FQDNs.
+    In ``ALL`` mode, the 5 passive tools and the 2 non-ffuf active tools
+    (amass + gobuster) run concurrently in two pools submitted to an outer
+    executor; ffuf runs after both pools drain so it can target IPs resolved
+    from passive FQDNs. dnsrecon runs only in the passive phase in ALL mode;
+    in ACTIVE-only mode it joins the active pool so AXFR and DNSSEC zone-walk
+    enumeration are still executed when passive tools are skipped.
 
     :param domain: Target base domain (e.g. ``"example.com"``).
     :param mode: Enumeration strategy – ``passive``, ``active``, or ``all``.

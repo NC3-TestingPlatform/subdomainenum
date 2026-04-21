@@ -424,17 +424,19 @@ class TestRunPassive:
 
 class TestRunActive:
     def test_returns_sources_without_urls(self) -> None:
-        """Active pool now contains amass + gobuster (dnsrecon delegated to passive)
-        plus the ffuf sentinel marked unavailable when no URLs are provided → 3 sources."""
+        """With overall_mode unset (ACTIVE-only path), the active pool contains
+        amass + gobuster + dnsrecon (for AXFR / DNSSEC zone walk) plus the ffuf
+        sentinel marked unavailable when no URLs are provided → 4 sources."""
         src = _make_source()
         with (
             patch("subdomainenum.assessor.run_amass", return_value=src),
             patch("subdomainenum.assessor.run_gobuster_dns", return_value=src),
+            patch("subdomainenum.assessor.run_dnsrecon", return_value=src),
             patch("subdomainenum.assessor.run_ffuf") as mock_ffuf,
         ):
             sources, vhosts = _run_active("example.com", wordlist="/tmp/w.txt", urls=[], progress_cb=None)
         mock_ffuf.assert_not_called()
-        assert len(sources) == 3
+        assert len(sources) == 4
         ffuf_src = next(s for s in sources if s.name == "ffuf")
         assert ffuf_src.available is False
 
@@ -509,13 +511,14 @@ class TestRunActive:
         assert any(s == "gobuster" for s, _ in cmd_calls)
 
     def test_finish_cb_called(self) -> None:
-        """finish_cb is called for each active source with (name, error_or_none, timed_out).
-        dnsrecon is *not* in the active pool — it runs only in the passive phase."""
+        """finish_cb is called for each active source (amass, gobuster, dnsrecon, ffuf)
+        in ACTIVE-only mode (overall_mode unset)."""
         finish_calls: list[tuple] = []
         src = _make_source()
         with (
             patch("subdomainenum.assessor.run_amass", return_value=src),
             patch("subdomainenum.assessor.run_gobuster_dns", return_value=src),
+            patch("subdomainenum.assessor.run_dnsrecon", return_value=src),
         ):
             _run_active(
                 "example.com",
@@ -527,8 +530,8 @@ class TestRunActive:
         names = [n for n, _, _ in finish_calls]
         assert "amass" in names
         assert "gobuster" in names
+        assert "dnsrecon" in names
         assert "ffuf" in names
-        assert "dnsrecon" not in names
         ffuf_err = next(err for name, err, _ in finish_calls if name == "ffuf")
         assert ffuf_err is not None  # skipped without urls
 
@@ -730,17 +733,22 @@ class TestPhaseAwareKeys:
         assert "ffuf" in names
 
     def test_active_active_mode_plain_keys(self) -> None:
-        """In ACTIVE-only mode no suffix is added."""
+        """In ACTIVE-only mode no suffix is added, and dnsrecon is present
+        (it joins the active pool so AXFR/DNSSEC checks still run)."""
         names = self._active_finish_names(EnumMode.ACTIVE)
         assert "amass" in names
+        assert "dnsrecon" in names
         assert "amass active" not in names
-        assert "dnsrecon" not in names
+        assert "dnsrecon active" not in names
 
     def test_active_no_overall_mode_plain_keys(self) -> None:
-        """Without overall_mode (None) no suffix is added."""
+        """Without overall_mode (None) no suffix is added, and dnsrecon is
+        present in the active pool (same as ACTIVE-only mode)."""
         names = self._active_finish_names(None)
         assert "amass" in names
-        assert "dnsrecon" not in names
+        assert "dnsrecon" in names
+        assert "amass active" not in names
+        assert "dnsrecon active" not in names
 
     # --- debug_cb key routing in ALL mode ---
 
@@ -852,10 +860,10 @@ class TestActiveParallelism:
     """The non-ffuf active tools must run concurrently in _run_active_enum."""
 
     def test_active_tools_run_in_parallel(self) -> None:
-        """amass and gobuster both reach a Barrier(2) together → proves concurrency.
-        dnsrecon is no longer part of the active pool."""
+        """With overall_mode unset, the pool is amass + gobuster + dnsrecon.
+        All three reach a Barrier(3) together → proves concurrency."""
         import threading
-        barrier = threading.Barrier(2, timeout=2.0)
+        barrier = threading.Barrier(3, timeout=2.0)
 
         def fake_amass(domain, **kwargs):
             barrier.wait()
@@ -865,14 +873,35 @@ class TestActiveParallelism:
             barrier.wait()
             return _make_source(name="gobuster")
 
+        def fake_dnsrecon(domain, **kwargs):
+            barrier.wait()
+            return _make_source(name="dnsrecon")
+
         with (
             patch("subdomainenum.assessor.run_amass", side_effect=fake_amass),
             patch("subdomainenum.assessor.run_gobuster_dns", side_effect=fake_gobuster),
+            patch("subdomainenum.assessor.run_dnsrecon", side_effect=fake_dnsrecon),
         ):
             tools = _run_active_enum("example.com", wordlist="/tmp/w.txt", progress_cb=None)
 
-        # Barrier did not raise BrokenBarrierError → both reached the barrier together.
-        assert len(tools) == 2
+        # Barrier did not raise BrokenBarrierError → all 3 reached the barrier together.
+        assert len(tools) == 3
+        names = {t.name for t in tools}
+        assert names == {"amass", "gobuster", "dnsrecon"}
+
+    def test_all_mode_omits_dnsrecon_from_active_pool(self) -> None:
+        """In ALL mode dnsrecon already runs passively, so _run_active_enum must
+        NOT start a second dnsrecon invocation."""
+        with (
+            patch("subdomainenum.assessor.run_amass", return_value=_make_source(name="amass")),
+            patch("subdomainenum.assessor.run_gobuster_dns", return_value=_make_source(name="gobuster")),
+            patch("subdomainenum.assessor.run_dnsrecon", return_value=_make_source(name="dnsrecon")) as mock_dnsrecon,
+        ):
+            tools = _run_active_enum(
+                "example.com", wordlist="/tmp/w.txt",
+                progress_cb=None, overall_mode=EnumMode.ALL,
+            )
+        mock_dnsrecon.assert_not_called()
         names = {t.name for t in tools}
         assert names == {"amass", "gobuster"}
 
