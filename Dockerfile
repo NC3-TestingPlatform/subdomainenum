@@ -4,7 +4,7 @@
 FROM golang:latest AS go-builder
 
 RUN go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest && \
-    go install github.com/owasp-amass/amass/v5/cmd/amass@main && \
+    go install github.com/owasp-amass/amass/v4/...@latest && \
     go install github.com/OJ/gobuster/v3@latest && \
     go install github.com/tomnomnom/assetfinder@latest && \
     go install github.com/ffuf/ffuf/v2@latest
