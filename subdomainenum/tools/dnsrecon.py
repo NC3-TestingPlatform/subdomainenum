@@ -41,7 +41,6 @@ def run_dnsrecon(
     wordlist: str | None = None,
     timeout: int = 300,
     threads: int | None = None,
-    filter_wildcard: bool = True,
     disable_check_nxdomain: bool = False,
     disable_check_recursion: bool = False,
     disable_check_bindversion: bool = False,
@@ -81,9 +80,6 @@ def run_dnsrecon(
         ``snoop``; ignored in ACTIVE mode (brute-force is handled by gobuster).
     :param timeout: Maximum seconds to wait for dnsrecon.
     :param threads: Number of threads for dnsrecon (``--threads``). ``None`` uses the dnsrecon default.
-    :param filter_wildcard: Accepted for API compatibility but now a no-op —
-        the brute-force type that required wildcard filtering has been dropped
-        in favour of gobuster's own wildcard handling.
     :param disable_check_nxdomain: Pass ``--disable_check_nxdomain`` to skip NXDOMAIN hijack detection.
     :param disable_check_recursion: Pass ``--disable_check_recursion`` to skip recursion checks.
     :param disable_check_bindversion: Pass ``--disable_check_bindversion`` to skip BIND version checks.
@@ -94,7 +90,6 @@ def run_dnsrecon(
         resolution) in parallel with enumeration.
     :rtype: ToolResult
     """
-    _ = filter_wildcard  # retained for API compatibility; see docstring
     result = ToolResult(name="dnsrecon")
 
     has_wordlist = bool(wordlist)

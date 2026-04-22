@@ -50,7 +50,6 @@ def run_amass(
     domain: str,
     *,
     mode: EnumMode = EnumMode.PASSIVE,
-    wordlist: str | None = None,
     timeout: int = 600,
     idle_timeout: int = 45,
     line_cb: Callable[[str], None] | None = None,
@@ -62,9 +61,6 @@ def run_amass(
     :param domain: Target base domain.
     :param mode: Enumeration mode.  When ``active`` or ``all``, ``-active`` is
         appended to enable zone transfers and certificate name grabs.
-    :param wordlist: Accepted for API compatibility but ignored — brute-force DNS
-        enumeration is handled by ``gobuster dns`` (faster, higher concurrency)
-        so ``-brute -w`` is no longer passed to amass.
     :param timeout: Hard ceiling in seconds; amass is killed if it runs this long
         regardless of output activity.
     :param idle_timeout: Seconds of silence after which amass is killed even if the
@@ -77,7 +73,6 @@ def run_amass(
         in parallel with enumeration.
     :rtype: ToolResult
     """
-    _ = wordlist  # retained for API compatibility; see docstring
     result = ToolResult(name="amass")
     cmd = ["amass", "enum", "-d", domain]
     if mode in (EnumMode.ACTIVE, EnumMode.ALL):

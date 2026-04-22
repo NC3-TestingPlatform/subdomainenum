@@ -240,34 +240,6 @@ class TestRunAmass:
         assert "-brute" not in cmd
         assert "-w" not in cmd
 
-    def test_brute_flag_dropped_in_active_mode_even_with_wordlist(self) -> None:
-        """Brute-force is delegated to gobuster → amass must not emit -brute/-w
-        even when a wordlist is passed, so the two tools don't duplicate work."""
-        with patch("subdomainenum.tools.amass.run_tool", return_value=([], False)) as mock:
-            run_amass("example.com", mode=EnumMode.ACTIVE, wordlist="/tmp/words.txt")
-            cmd = mock.call_args[0][0]
-        assert "-brute" not in cmd
-        assert "-w" not in cmd
-        assert "/tmp/words.txt" not in cmd
-
-    def test_brute_flag_dropped_in_all_mode_even_with_wordlist(self) -> None:
-        """Brute-force is delegated to gobuster → amass must not emit -brute/-w
-        even when a wordlist is passed, so the two tools don't duplicate work."""
-        with patch("subdomainenum.tools.amass.run_tool", return_value=([], False)) as mock:
-            run_amass("example.com", mode=EnumMode.ALL, wordlist="/tmp/words.txt")
-            cmd = mock.call_args[0][0]
-        assert "-brute" not in cmd
-        assert "-w" not in cmd
-        assert "/tmp/words.txt" not in cmd
-
-    def test_no_brute_flag_in_passive_mode_with_wordlist(self) -> None:
-        """wordlist + PASSIVE mode → -brute must not appear (passive ignores wordlist)."""
-        with patch("subdomainenum.tools.amass.run_tool", return_value=([], False)) as mock:
-            run_amass("example.com", mode=EnumMode.PASSIVE, wordlist="/tmp/words.txt")
-            cmd = mock.call_args[0][0]
-        assert "-brute" not in cmd
-        assert "-w" not in cmd
-
     def test_idle_timeout_forwarded_to_run_tool(self) -> None:
         """idle_timeout kwarg is forwarded to run_tool."""
         with patch("subdomainenum.tools.amass.run_tool", return_value=([], False)) as mock:
@@ -533,17 +505,6 @@ class TestRunDnsrecon:
         assert "-f" not in cmd
         assert "--iw" not in cmd
 
-    def test_filter_wildcard_false_is_a_noop(self) -> None:
-        """filter_wildcard=False is accepted for API compat but must not emit --iw."""
-        with patch("subdomainenum.tools.dnsrecon.run_tool", return_value=([], False)) as mock:
-            run_dnsrecon(
-                "example.com", mode=EnumMode.ACTIVE, wordlist="/tmp/words.txt",
-                filter_wildcard=False,
-            )
-            cmd = mock.call_args[0][0]
-        assert "--iw" not in cmd
-        assert "-f" not in cmd
-
     def test_passive_mode_excludes_f_and_iw(self) -> None:
         with patch("subdomainenum.tools.dnsrecon.run_tool", return_value=([], False)) as mock:
             run_dnsrecon("example.com", mode=EnumMode.PASSIVE)
@@ -597,17 +558,6 @@ class TestRunDnsrecon:
             cmd = mock.call_args[0][0]
         assert "-f" not in cmd
         assert "--iw" not in cmd
-
-    def test_all_mode_filter_wildcard_false_is_a_noop(self) -> None:
-        """filter_wildcard=False is accepted in ALL mode too but must not emit --iw."""
-        with patch("subdomainenum.tools.dnsrecon.run_tool", return_value=([], False)) as mock:
-            run_dnsrecon(
-                "example.com", mode=EnumMode.ALL, wordlist="/tmp/words.txt",
-                filter_wildcard=False,
-            )
-            cmd = mock.call_args[0][0]
-        assert "--iw" not in cmd
-        assert "-f" not in cmd
 
     # --- Shodan enrichment (opt-in via SHODAN_API_KEY env var) ---
 
