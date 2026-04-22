@@ -662,14 +662,76 @@ class TestRunDnsrecon:
         type_val = cmd[cmd.index("-t") + 1]
         assert "snoop" not in type_val
 
-    def test_passive_snoop_does_not_require_n_flag(self, monkeypatch) -> None:
-        """dnsrecon derives the NS from the domain — we must not pass -n."""
+    def test_passive_snoop_passes_n_flag_with_resolved_ns(self, monkeypatch) -> None:
+        """dnsrecon snoop requires -n with IPv4; NS hostnames are resolved to IPs."""
         monkeypatch.delenv("SHODAN_API_KEY", raising=False)
-        with patch("subdomainenum.tools.dnsrecon.run_tool", return_value=([], False)) as mock:
+        with (
+            patch(
+                "subdomainenum.tools.dnsrecon.resolve_ns",
+                return_value=["ns1.example.com", "ns2.example.com"],
+            ) as mock_ns,
+            patch(
+                "subdomainenum.tools.dnsrecon.resolve_ips",
+                side_effect=lambda host: {"ns1.example.com": ["1.2.3.4"], "ns2.example.com": ["5.6.7.8"]}[host],
+            ),
+            patch("subdomainenum.tools.dnsrecon.run_tool", return_value=([], False)) as mock_tool,
+        ):
             run_dnsrecon("example.com", mode=EnumMode.PASSIVE, wordlist="/tmp/snoop.txt")
-            cmd = mock.call_args[0][0]
+            cmd = mock_tool.call_args[0][0]
+        mock_ns.assert_called_once_with("example.com")
+        assert "-n" in cmd
+        n_idx = cmd.index("-n")
+        assert "1.2.3.4" in cmd[n_idx + 1]
+        assert "5.6.7.8" in cmd[n_idx + 1]
+
+    def test_passive_snoop_skips_n_flag_when_ns_empty(self, monkeypatch) -> None:
+        """If NS lookup returns nothing, -n is omitted."""
+        monkeypatch.delenv("SHODAN_API_KEY", raising=False)
+        with (
+            patch("subdomainenum.tools.dnsrecon.resolve_ns", return_value=[]),
+            patch("subdomainenum.tools.dnsrecon.run_tool", return_value=([], False)) as mock_tool,
+        ):
+            run_dnsrecon("example.com", mode=EnumMode.PASSIVE, wordlist="/tmp/snoop.txt")
+            cmd = mock_tool.call_args[0][0]
         assert "-n" not in cmd
-        assert "--name_server" not in cmd
+
+    def test_passive_snoop_skips_n_flag_when_ns_has_no_ipv4(self, monkeypatch) -> None:
+        """If NS hostnames resolve to no IPv4, -n is omitted."""
+        monkeypatch.delenv("SHODAN_API_KEY", raising=False)
+        with (
+            patch("subdomainenum.tools.dnsrecon.resolve_ns", return_value=["ns1.example.com"]),
+            patch("subdomainenum.tools.dnsrecon.resolve_ips", return_value=[]),
+            patch("subdomainenum.tools.dnsrecon.run_tool", return_value=([], False)) as mock_tool,
+        ):
+            run_dnsrecon("example.com", mode=EnumMode.PASSIVE, wordlist="/tmp/snoop.txt")
+            cmd = mock_tool.call_args[0][0]
+        assert "-n" not in cmd
+
+    def test_all_mode_snoop_passes_n_flag(self) -> None:
+        """ALL mode always enables snoop — NS IPv4 must be injected here too."""
+        with (
+            patch("subdomainenum.tools.dnsrecon.resolve_ns", return_value=["ns1.example.com"]),
+            patch("subdomainenum.tools.dnsrecon.resolve_ips", return_value=["1.2.3.4"]),
+            patch("subdomainenum.tools.dnsrecon.run_tool", return_value=([], False)) as mock_tool,
+        ):
+            run_dnsrecon("example.com", mode=EnumMode.ALL, wordlist="/tmp/words.txt")
+            cmd = mock_tool.call_args[0][0]
+        assert "-n" in cmd
+        assert "1.2.3.4" in cmd[cmd.index("-n") + 1]
+
+    def test_active_mode_no_snoop_no_n_flag(self) -> None:
+        """ACTIVE mode does not use snoop, so resolve_ns must not be called."""
+        with (
+            patch(
+                "subdomainenum.tools.dnsrecon.resolve_ns",
+                return_value=["ns1.example.com"],
+            ) as mock_ns,
+            patch("subdomainenum.tools.dnsrecon.run_tool", return_value=([], False)) as mock_tool,
+        ):
+            run_dnsrecon("example.com", mode=EnumMode.ACTIVE, wordlist="/tmp/words.txt")
+            cmd = mock_tool.call_args[0][0]
+        mock_ns.assert_not_called()
+        assert "-n" not in cmd
 
 
 # ---------------------------------------------------------------------------

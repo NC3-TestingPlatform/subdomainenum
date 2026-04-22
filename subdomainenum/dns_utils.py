@@ -80,3 +80,34 @@ def is_alive(fqdn: str, timeout: float = 5.0) -> bool:
     :rtype: bool
     """
     return len(resolve_ips(fqdn, timeout=timeout)) > 0
+
+
+def resolve_ns(domain: str, timeout: float = 5.0) -> list[str]:
+    """Return the authoritative nameserver hostnames for *domain*.
+
+    Uses the same never-raises contract as :func:`resolve_ips`: any DNS
+    failure collapses to an empty list.
+
+    :param domain: Target base domain to query NS records for.
+    :param timeout: Per-query timeout in seconds.
+    :returns: Deduplicated list of nameserver hostnames (trailing dot stripped).
+    :rtype: list[str]
+    """
+    try:
+        answer = dns.resolver.resolve(domain, "NS", lifetime=timeout)
+    except (
+        dns.resolver.NXDOMAIN,
+        dns.resolver.NoAnswer,
+        dns.resolver.NoNameservers,
+        dns.exception.Timeout,
+        dns.exception.DNSException,
+    ):
+        return []
+    seen: set[str] = set()
+    ns_hosts: list[str] = []
+    for rdata in answer:
+        host = rdata.target.to_text().rstrip(".")
+        if host and host not in seen:
+            seen.add(host)
+            ns_hosts.append(host)
+    return ns_hosts

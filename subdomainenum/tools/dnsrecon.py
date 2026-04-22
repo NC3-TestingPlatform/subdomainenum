@@ -7,6 +7,7 @@ from typing import Callable
 
 from subdomainenum.tools.tool_runner import run_tool
 from subdomainenum.models import EnumMode, ToolResult
+from subdomainenum.dns_utils import resolve_ips, resolve_ns
 
 # Passive enumeration types (no wordlist required):
 #   std — SOA, NS, A, AAAA, MX, SRV (standard DNS records)
@@ -14,10 +15,10 @@ from subdomainenum.models import EnumMode, ToolResult
 # Extended with boolean flags: -b (Bing), -y (Yandex), -k (crt.sh)
 _PASSIVE_TYPES = "std,srv"
 
-# Optional passive type (requires -D wordlist):
+# Optional passive type (requires -D wordlist and -n nameserver):
 #   snoop — cache-snoop the domain's authoritative NS for entries in the
-#   wordlist. dnsrecon derives the NS automatically from the target domain
-#   when -n is absent, so no resolver argument needs to be plumbed in.
+#   wordlist. We resolve NS records first and pass them via -n so that
+#   dnsrecon does not need to auto-derive them (which is unreliable).
 _PASSIVE_SNOOP_TYPE = "snoop"
 
 # Active-phase DNS brute-force is delegated to ``gobuster dns`` (higher
@@ -96,7 +97,9 @@ def run_dnsrecon(
 
     if mode == EnumMode.PASSIVE:
         types = (
-            f"{_PASSIVE_TYPES},{_PASSIVE_SNOOP_TYPE}" if has_wordlist else _PASSIVE_TYPES
+            f"{_PASSIVE_TYPES},{_PASSIVE_SNOOP_TYPE}"
+            if has_wordlist
+            else _PASSIVE_TYPES
         )
         use_passive_flags = True
         use_active_flags = False
@@ -112,10 +115,22 @@ def run_dnsrecon(
         use_active_flags = True
         use_wordlist = True
 
-    cmd = ["dnsrecon", "-d", domain, "-t", types, "--lifetime", "3"]
+    use_snoop = _PASSIVE_SNOOP_TYPE in types
+
+    cmd = ["dnsrecon", "-d", domain, "-t", types]
 
     if use_wordlist and wordlist:
         cmd += ["-D", wordlist]
+
+    if use_snoop:
+        ns_hostnames = resolve_ns(domain)
+        ns_ips: list[str] = []
+        for host in ns_hostnames:
+            for ip in resolve_ips(host):
+                if ":" not in ip and ip not in ns_ips:  # IPv4 only
+                    ns_ips.append(ip)
+        if ns_ips:
+            cmd += ["-n", ",".join(ns_ips)]
 
     if threads is not None:
         cmd += ["--threads", str(threads)]
@@ -128,7 +143,13 @@ def run_dnsrecon(
         cmd += ["--disable_check_bindversion"]
 
     if use_passive_flags:
-        cmd += ["-b", "-y", "-k", "-s", "-w"]  # Bing, Yandex, crt.sh, SPF reverse, deep whois
+        cmd += [
+            "-b",
+            "-y",
+            "-k",
+            "-s",
+            "-w",
+        ]  # Bing, Yandex, crt.sh, SPF reverse, deep whois
         # Shodan enrichment is opt-in via env var; dnsrecon itself reads
         # SHODAN_API_KEY when --shodan-key is omitted, so we don't have to
         # forward the secret on the command line.
@@ -158,8 +179,12 @@ def run_dnsrecon(
 
     try:
         lines, timed_out = run_tool(
-            cmd, timeout=timeout, line_cb=_on_line, cmd_cb=cmd_cb,
-            capture_stderr=True, ignore_returncode=True,
+            cmd,
+            timeout=timeout,
+            line_cb=_on_line,
+            cmd_cb=cmd_cb,
+            capture_stderr=True,
+            ignore_returncode=True,
         )
     except RuntimeError as exc:
         result.available = False
