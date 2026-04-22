@@ -39,7 +39,7 @@ $ subdomainenum check example.com
 | Source / Mode      | Type    | What it does                                                                         |
 | ------------------ | ------- | ------------------------------------------------------------------------------------ |
 | **subfinder**      | Passive | Runs `subfinder -d domain -silent -all` (queries all sources)                        |
-| **amass**          | Passive | Runs `amass enum -d domain`; parses v4 graph-format output to extract FQDNs         |
+| **amass**          | Passive | Runs `amass enum -d domain`; parses v5 graph-format output to extract FQDNs         |
 | **findomain**      | Passive | Runs `findomain --target domain --quiet`                                             |
 | **assetfinder**    | Passive | Runs `assetfinder --subs-only domain`                                                |
 | **dnsrecon**       | Passive + Active | Passive: `std,srv` with Bing/Yandex/crt.sh (`-b -y -k`), SPF reverse + deep whois (`-s -w`); adds `snoop` (NS cache-snoop) when `--wordlist` is supplied; adds `--shodan --shodan-active` when `SHODAN_API_KEY` is in the environment. Active: `std,srv` with AXFR and DNSSEC zone walk (`-a -z`); brute-force is delegated to `gobuster dns` so dnsrecon no longer emits `brt`. |
@@ -95,7 +95,7 @@ Run `subdomainenum info` to check which tools are detected on your `$PATH`:
 | Tool        | Install                                                                    |
 | ----------- | -------------------------------------------------------------------------- |
 | subfinder   | `go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest` |
-| amass       | `go install github.com/owasp-amass/amass/v4/...@latest`                    |
+| amass       | `go install github.com/owasp-amass/amass/v5/cmd/amass@main`                |
 | findomain   | Download from https://github.com/Findomain/Findomain/releases              |
 | assetfinder | `go install github.com/tomnomnom/assetfinder@latest`                       |
 | dnsrecon    | `pip install git+https://github.com/darkoperator/dnsrecon.git@master` (installed from source in the Docker image) |

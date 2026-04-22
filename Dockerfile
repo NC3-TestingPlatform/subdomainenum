@@ -3,11 +3,11 @@
 # ===========================================================================
 FROM golang:latest AS go-builder
 
-RUN go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest && \
-    go install -v github.com/owasp-amass/amass/v4/...@latest && \
-    go install -v github.com/OJ/gobuster/v3@latest && \
-    go install -v github.com/tomnomnom/assetfinder@latest && \
-    go install -v github.com/ffuf/ffuf/v2@latest
+RUN go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest && \
+    go install github.com/owasp-amass/amass/v5/cmd/amass@main && \
+    go install github.com/OJ/gobuster/v3@latest && \
+    go install github.com/tomnomnom/assetfinder@latest && \
+    go install github.com/ffuf/ffuf/v2@latest
 
 # ===========================================================================
 # Stage 2 – Python runtime with all tools installed
