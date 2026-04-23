@@ -37,19 +37,19 @@
       "file": "subdomainenum/assessor.py",
       "line": 222,
       "title": "assess() — Public API",
-      "description": "`assess()` is the library's public surface. It accepts a domain and optional callbacks and returns an `EnumReport`. Nothing inside raises; all errors are captured in `ToolResult.error`.\n\nPhases:\n1. Passive tools in parallel (`_run_passive`, 5 workers)\n2. Non-ffuf active tools in parallel (`_run_active_enum`). In `ALL` mode the pool is **amass + gobuster** (2 workers) — dnsrecon already runs passively. In `ACTIVE`-only mode the pool is **amass + gobuster + dnsrecon** (3 workers) so AXFR and DNSSEC zone walk are still executed when the passive phase is skipped.\n3. ffuf fans out one worker per resolved target IP, capped at 8 (`_run_ffuf_fanout`)\n4. DNS resolution runs *during* phases 1–2: a `StreamingResolver` receives FQDNs via each tool's `fqdn_cb` as soon as they are parsed, and the final `_resolve_all` (up to 100 workers) consumes whatever the streaming resolver didn't already finish. Per-FQDN A/AAAA queries fan out on a shared 256-worker pool in `dns_utils.py`.\n\nIn `ALL` mode phases 1 and 2 run concurrently under an outer executor (phase fusion); ffuf runs after they drain so it can target IPs resolved from passive FQDNs."
+      "description": "`assess()` is the library's public surface. It accepts a domain and optional callbacks and returns an `EnumReport`. Nothing inside raises; all errors are captured in `ToolResult.error`.\n\nPhases:\n1. Passive tools in parallel (`_run_passive`, 4 workers)\n2. Non-ffuf active tools in parallel (`_run_active_enum`). The pool is always **gobuster** (1 worker) regardless of mode. dnsrecon is never in the active pool; AXFR and DNSSEC zone walk are performed in the passive phase only.\n3. ffuf fans out one worker per resolved target IP, capped at 8 (`_run_ffuf_fanout`)\n4. DNS resolution runs *during* phases 1–2: a `StreamingResolver` receives FQDNs via each tool's `fqdn_cb` as soon as they are parsed, and the final `_resolve_all` (up to 100 workers) consumes whatever the streaming resolver didn't already finish. Per-FQDN A/AAAA queries fan out on a shared 256-worker pool in `dns_utils.py`.\n\nIn `ALL` mode phases 1 and 2 run concurrently under an outer executor (phase fusion); ffuf runs after they drain so it can target IPs resolved from passive FQDNs."
     },
     {
       "file": "subdomainenum/assessor.py",
       "line": 90,
       "title": "Passive Fan-out — ThreadPoolExecutor",
-      "description": "Five passive tools submit to a `ThreadPoolExecutor` with `max_workers=5` (one per tool). `as_completed()` is used instead of `map()` so the progress callback fires as soon as each future resolves rather than waiting for all to finish.\n\n**Gotcha**: The executor catches all exceptions from tool wrappers (line 106) and converts them into `ToolResult(available=False)`. This means a bug in one wrapper cannot abort the entire scan."
+      "description": "Four passive tools submit to a `ThreadPoolExecutor` with `max_workers=4` (one per tool). `as_completed()` is used instead of `map()` so the progress callback fires as soon as each future resolves rather than waiting for all to finish.\n\n**Gotcha**: The executor catches all exceptions from tool wrappers (line 106) and converts them into `ToolResult(available=False)`. This means a bug in one wrapper cannot abort the entire scan."
     },
     {
       "file": "subdomainenum/assessor.py",
       "line": 276,
       "title": "Deduplication + Tool Attribution",
-      "description": "`fqdn_sources` is built by iterating over all `ToolResult.subdomains` lists and accumulating which tools found each FQDN. A set-like deduplication happens here — the same FQDN from two tools results in one `SubdomainResult` with `tools=[\"subfinder\", \"amass\"]`.\n\nThis dict is the only place where per-tool data is merged. Downstream (reporter, verdict) only sees the deduplicated list."
+      "description": "`fqdn_sources` is built by iterating over all `ToolResult.subdomains` lists and accumulating which tools found each FQDN. A set-like deduplication happens here — the same FQDN from two tools results in one `SubdomainResult` with `tools=[\"subfinder\", \"findomain\"]`.\n\nThis dict is the only place where per-tool data is merged. Downstream (reporter, verdict) only sees the deduplicated list."
     },
     {
       "file": "subdomainenum/tools/tool_runner.py",
@@ -61,19 +61,7 @@
       "file": "subdomainenum/tools/tool_runner.py",
       "line": 62,
       "title": "Idle Timeout — Rolling Silence Detection",
-      "description": "When `idle_timeout` is set, a mutable `list[float]` container (`_last_line_time`) holds the timestamp of the last received line. The `_tracking_cb` closure updates `_last_line_time[0]` on every line (using a list instead of a bare `float` so the inner closure can mutate it without `nonlocal`).\n\nThe polling loop (line 91) wakes every 0.5 s and checks two conditions:\n- `now - _last_line_time[0] >= idle_timeout` → silence threshold crossed\n- `now - _start >= timeout` → hard ceiling hit\n\nThis solves the amass stall: amass can run for 10 minutes as long as it keeps emitting output, but is killed 45 s after the last line (amass's `run_amass` default)."
-    },
-    {
-      "file": "subdomainenum/tools/amass.py",
-      "line": 12,
-      "title": "amass v4 Output Parser",
-      "description": "amass v4 changed its output format from plain FQDNs to a graph-relationship format:\n\n```\nsub.example.com (FQDN) --> a_record --> 1.2.3.4 (IPAddress)\n```\n\n`_AMASS_FQDN_RE` matches only left-hand FQDNs tagged `(FQDN)`. The domain suffix filter (`fqdn == domain or fqdn.endswith(suffix)`) drops external nodes like nameservers that appear on the right-hand side.\n\n**Gotcha**: `_ANSI_ESCAPE_RE` strips terminal colour codes that some amass builds emit when they detect a TTY-like environment."
-    },
-    {
-      "file": "subdomainenum/tools/amass.py",
-      "line": 49,
-      "title": "run_amass() — Brute Force + Idle Timeout Defaults",
-      "description": "`run_amass()` is the only wrapper that passes `idle_timeout` to `run_tool()`. Defaults are `idle_timeout=45` (kill after 45 s silence) and `timeout=600` (hard ceiling 10 min). The idle ceiling used to be 120 s but was tightened in the perf pass: amass stalls silently burn minutes that the scan doesn't need to pay for.\n\nIn active/all mode `run_amass()` appends `-active` only. The `-brute -w <wordlist>` flags have been dropped — DNS brute-force is delegated to `gobuster dns` (faster, higher concurrency). The `wordlist` kwarg is still accepted for API compatibility but is ignored here."
+      "description": "When `idle_timeout` is set, a mutable `list[float]` container (`_last_line_time`) holds the timestamp of the last received line. The `_tracking_cb` closure updates `_last_line_time[0]` on every line (using a list instead of a bare `float` so the inner closure can mutate it without `nonlocal`).\n\nThe polling loop (line 91) wakes every 0.5 s and checks two conditions:\n- `now - _last_line_time[0] >= idle_timeout` → silence threshold crossed\n- `now - _start >= timeout` → hard ceiling hit\n\nA tool can run as long as it keeps emitting output, but is killed once it goes silent for longer than `idle_timeout` seconds."
     },
     {
       "file": "subdomainenum/dns_utils.py",

@@ -33,7 +33,6 @@ subdomainenum/
   tools/
     tool_runner.py  → run_tool(): subprocess wrapper with timeout + streaming
     subfinder.py    → run_subfinder()
-    amass.py        → run_amass()
     findomain.py    → run_findomain()
     assetfinder.py  → run_assetfinder()
     dnsrecon.py     → run_dnsrecon()
@@ -52,8 +51,8 @@ tests/
 ### Request lifecycle
 1. `cli.py` validates domain and flags, builds `debug_cb` / `progress_cb`
 2. `cli.py` calls `assess(domain, mode, ...)` from `assessor.py`
-3. `assessor.py` fans out passive tools in a `ThreadPoolExecutor` (5 parallel workers)
-4. The non-ffuf active tools run in their own `ThreadPoolExecutor` via `_run_active_enum`. In `ALL` mode the pool is amass + gobuster (2 workers) — dnsrecon already runs passively in that mode, so re-running it actively would duplicate work. In `ACTIVE`-only mode (or when `overall_mode` is `None`) the pool is amass + gobuster + dnsrecon (3 workers) so AXFR (`-a`) and DNSSEC zone walk (`-z`) are still executed when the passive pool is skipped. In `ALL` mode the passive pool and the active-enum pool run concurrently under an outer executor (phase fusion).
+3. `assessor.py` fans out passive tools in a `ThreadPoolExecutor` (4 parallel workers)
+4. The non-ffuf active tools run in their own `ThreadPoolExecutor` via `_run_active_enum`. The pool is always **gobuster** (1 worker), regardless of mode. dnsrecon is never in the active pool; AXFR and DNSSEC zone walk are performed passively in all modes. In `ALL` mode the passive pool and the active-enum pool run concurrently under an outer executor (phase fusion).
 5. `ffuf` runs after the enumeration pools drain so it can target IPs resolved from passive FQDNs; multiple URLs are fuzzed in parallel (`_run_ffuf_fanout`, capped at 8 workers).
 6. A `StreamingResolver` (`subdomainenum/streaming.py`) runs alongside enumeration: each tool wrapper accepts an `fqdn_cb`; `assess()` wires it to `StreamingResolver.submit`, so FQDNs are resolved in the background as soon as they are parsed. Per-FQDN `A` and `AAAA` queries fan out on a shared 256-worker pool in `dns_utils.py` (so the slower of the two queries bounds per-FQDN latency). The final `_resolve_all` call then uses up to 100 workers to fetch anything the streaming resolver didn't already complete; passive-phase IPs are cached and reused for ffuf URL enrichment to avoid duplicate lookups.
 7. `EnumReport` is returned; `reporter.py` renders with Rich or serialises to JSON
@@ -65,9 +64,9 @@ tests/
 | DNS resolution | `dns_utils.py` | `dns.resolver.Resolver.resolve` |
 
 ### EnumMode behaviour
-- `passive` — subfinder, amass, findomain, assetfinder, dnsrecon (`std,srv` with Bing/Yandex/crt.sh/SPF/AXFR/DNSSEC zone walk; assetfinder also queries crt.sh/certspotter internally). AXFR and DNSSEC zone walk target public authoritative nameservers, not the target application, so they belong in the passive phase.
-- `active` — amass (no `-brute`), gobuster dns (brute-force, requires `--wordlist`); ffuf runs only when `--url` or resolved base-domain IPs provide targets. dnsrecon is **never** in the active pool.
-- `all` — both phases: passive runs the 5 passive sources (including dnsrecon), active runs amass + gobuster only.
+- `passive` — subfinder, findomain, assetfinder, dnsrecon (`std,srv` with Bing/Yandex/crt.sh/SPF/AXFR/DNSSEC zone walk; assetfinder also queries crt.sh/certspotter internally). AXFR and DNSSEC zone walk target public authoritative nameservers, not the target application, so they belong in the passive phase.
+- `active` — gobuster dns (brute-force, requires `--wordlist`); ffuf runs only when `--url` or resolved base-domain IPs provide targets. dnsrecon is **never** in the active pool.
+- `all` — both phases: passive runs the 4 passive sources (including dnsrecon), active runs gobuster only.
 
 ## Testing Conventions
 - Mock at the I/O boundary listed in the table above — never mock `assess()` itself
@@ -75,7 +74,7 @@ tests/
 - Test class naming: `TestRunTool`, `TestQueryCrtSh`, `TestAssess`, etc. (class-per-feature)
 - AAA pattern: Arrange → Act → Assert in every test method
 - Coverage target: ≥ 80% (configured in `pyproject.toml`)
-- Current test count: **361 tests**
+- Current test count: **338 tests**
 
 ## Adding a New Passive Source
 1. Add a `query_<name>(domain) → ToolResult` function directly in `assessor.py` or a new helper module

@@ -109,7 +109,7 @@ class TestToolResult:
         assert t.available is True
 
     def test_error_state(self) -> None:
-        t = ToolResult(name="amass", error="binary not found", available=False)
+        t = ToolResult(name="findomain", error="binary not found", available=False)
         assert t.available is False
         assert t.error == "binary not found"
 

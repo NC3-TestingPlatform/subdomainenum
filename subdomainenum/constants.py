@@ -14,10 +14,6 @@ ACTIVE_TOOLS: dict[str, dict[str, str]] = {
         "binary": "subfinder",
         "install": "go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest",
     },
-    "amass": {
-        "binary": "amass",
-        "install": "go install -v github.com/owasp-amass/amass/v4/...@master",
-    },
     "findomain": {
         "binary": "findomain",
         "install": "cargo install findomain  # or download from github.com/Findomain/Findomain/releases",

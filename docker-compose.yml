@@ -22,11 +22,6 @@ services:
       # See: https://github.com/projectdiscovery/subfinder#post-installation-instructions
       # - ${HOME}/.config/subfinder/provider-config.yaml:/root/.config/subfinder/provider-config.yaml:ro
 
-      # amass – data source credentials (optional).
-      # Create ~/.config/amass/datasources.yaml on the host and uncomment.
-      # See: https://github.com/owasp-amass/amass/blob/master/doc/user_guide.md
-      # - ${HOME}/.config/amass/datasources.yaml:/root/.config/amass/datasources.yaml:ro
-
     # Copy .env.example → .env and fill in any keys you want to use.
     env_file:
       - path: .env

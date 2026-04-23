@@ -24,7 +24,7 @@ def _make_report() -> EnumReport:
         ],
         tools=[
             ToolResult(name="dnsrecon", subdomains=["sub.example.com"], available=True, mode=EnumMode.PASSIVE),
-            ToolResult(name="amass", available=False, error="not found", mode=EnumMode.ACTIVE),
+            ToolResult(name="gobuster", available=False, error="not found", mode=EnumMode.ACTIVE),
         ],
     )
 
@@ -71,7 +71,7 @@ class TestToDict:
     def test_sources_include_mode(self) -> None:
         result = to_dict(_make_report())
         passive_src = next(s for s in result["tools"] if s["name"] == "dnsrecon")
-        active_src = next(s for s in result["tools"] if s["name"] == "amass")
+        active_src = next(s for s in result["tools"] if s["name"] == "gobuster")
         assert passive_src["mode"] == "passive"
         assert active_src["mode"] == "active"
 

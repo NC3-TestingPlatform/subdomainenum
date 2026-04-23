@@ -271,12 +271,12 @@ class TestSaveReportFormats:
 
 class TestInfoCommand:
     def test_info_runs(self) -> None:
-        with patch("subdomainenum.cli.detect_tools", return_value={"subfinder": True, "amass": False, "findomain": False, "assetfinder": True, "dnsrecon": True, "gobuster": False, "wfuzz": False}):
+        with patch("subdomainenum.cli.detect_tools", return_value={"subfinder": True, "findomain": False, "assetfinder": True, "dnsrecon": True, "gobuster": False, "wfuzz": False}):
             result = runner.invoke(app, ["info"])
         assert result.exit_code == 0
 
     def test_info_shows_tool_names(self) -> None:
-        with patch("subdomainenum.cli.detect_tools", return_value={k: False for k in ["subfinder", "amass", "findomain", "assetfinder", "dnsrecon", "gobuster", "wfuzz"]}):
+        with patch("subdomainenum.cli.detect_tools", return_value={k: False for k in ["subfinder", "findomain", "assetfinder", "dnsrecon", "gobuster", "wfuzz"]}):
             result = runner.invoke(app, ["info"])
         assert "subfinder" in result.stdout or result.exit_code == 0
 

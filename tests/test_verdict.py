@@ -17,7 +17,7 @@ class TestVerdictSummary:
             tools_ran=4,
             tools_failed=1,
             tools_timed_out=2,
-            tools_available=["subfinder", "amass"],
+            tools_available=["subfinder", "gobuster"],
             tools_missing=["findomain"],
             summary_line="10 subdomains found (6 alive, 3 dead, 1 timeout)",
         )
@@ -90,7 +90,7 @@ class TestBuildVerdict:
     def test_tools_count(self) -> None:
         tools = [
             ToolResult(name="subfinder", subdomains=["a.example.com"], available=True),
-            ToolResult(name="amass", subdomains=[], available=True),
+            ToolResult(name="gobuster", subdomains=[], available=True),
             ToolResult(name="findomain", available=False, error="not found"),
         ]
         report = self._make_report(tools=tools)
@@ -102,7 +102,7 @@ class TestBuildVerdict:
     def test_tools_timed_out_count(self) -> None:
         tools = [
             ToolResult(name="subfinder", available=True, timed_out=True),
-            ToolResult(name="amass", available=True, timed_out=False),
+            ToolResult(name="gobuster", available=True, timed_out=False),
             ToolResult(name="dnsrecon", available=True, timed_out=True),
         ]
         report = self._make_report(tools=tools)
@@ -113,7 +113,7 @@ class TestBuildVerdict:
         """ran / failed / timed_out must partition len(report.tools)."""
         tools = [
             ToolResult(name="subfinder", available=True),
-            ToolResult(name="amass", available=True, timed_out=True),
+            ToolResult(name="gobuster", available=True, timed_out=True),
             ToolResult(name="findomain", available=False, error="not found"),
             ToolResult(name="dnsrecon", available=True, error="crash", timed_out=True),
         ]
@@ -134,43 +134,40 @@ class TestBuildVerdict:
     def test_tools_lists(self) -> None:
         tools = [
             ToolResult(name="subfinder", available=True),
-            ToolResult(name="amass", available=True),
+            ToolResult(name="gobuster", available=True),
             ToolResult(name="findomain", available=False, error="not found"),
         ]
         report = self._make_report(tools=tools)
         v = build_verdict(report)
         assert "subfinder" in v.tools_available
-        assert "amass" in v.tools_available
+        assert "gobuster" in v.tools_available
         assert "findomain" in v.tools_missing
 
     def test_tools_available_deduplicated_across_phases(self) -> None:
-        """In ALL mode amass/dnsrecon each have two ToolResults; each name appears once."""
+        """A tool appearing in two ToolResults is listed once in tools_available."""
         tools = [
             ToolResult(name="subfinder", available=True, mode=EnumMode.PASSIVE),
-            ToolResult(name="amass", available=True, mode=EnumMode.PASSIVE),
             ToolResult(name="dnsrecon", available=True, mode=EnumMode.PASSIVE),
-            ToolResult(name="amass", available=True, mode=EnumMode.ACTIVE),
-            ToolResult(name="dnsrecon", available=True, mode=EnumMode.ACTIVE),
+            ToolResult(name="dnsrecon", available=True, mode=EnumMode.PASSIVE),
             ToolResult(name="gobuster", available=True, mode=EnumMode.ACTIVE),
         ]
         report = self._make_report(tools=tools, mode=EnumMode.ALL)
         v = build_verdict(report)
-        assert v.tools_available.count("amass") == 1
         assert v.tools_available.count("dnsrecon") == 1
-        assert v.tools_available == ["subfinder", "amass", "dnsrecon", "gobuster"]
+        assert v.tools_available == ["subfinder", "dnsrecon", "gobuster"]
 
     def test_tools_missing_excludes_names_available_elsewhere(self) -> None:
         """If a name is available in one run and unavailable in another, it's NOT in missing."""
         tools = [
-            ToolResult(name="amass", available=True, mode=EnumMode.PASSIVE),
-            ToolResult(name="amass", available=False, error="not found", mode=EnumMode.ACTIVE),
+            ToolResult(name="gobuster", available=True, mode=EnumMode.PASSIVE),
+            ToolResult(name="gobuster", available=False, error="not found", mode=EnumMode.ACTIVE),
             ToolResult(name="findomain", available=False, error="not found"),
         ]
         report = self._make_report(tools=tools)
         v = build_verdict(report)
-        assert v.tools_available == ["amass"]
+        assert v.tools_available == ["gobuster"]
         assert v.tools_missing == ["findomain"]
-        assert "amass" not in v.tools_missing
+        assert "gobuster" not in v.tools_missing
 
     def test_tools_missing_deduplicated(self) -> None:
         """A missing tool listed twice appears once in tools_missing."""

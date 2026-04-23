@@ -34,15 +34,15 @@ class TestAddLine:
     def test_add_line_multiple_sources(self) -> None:
         logger = DebugLogger()
         logger.add_line("subfinder", "a.example.com")
-        logger.add_line("amass", "b.example.com")
+        logger.add_line("findomain", "b.example.com")
         assert "subfinder" in logger._order
-        assert "amass" in logger._order
+        assert "findomain" in logger._order
 
     def test_add_line_preserves_registration_order(self) -> None:
         logger = DebugLogger()
-        logger.add_line("amass", "x")
+        logger.add_line("findomain", "x")
         logger.add_line("subfinder", "y")
-        assert logger._order[0] == "amass"
+        assert logger._order[0] == "findomain"
         assert logger._order[1] == "subfinder"
 
 
@@ -72,9 +72,9 @@ class TestFinish:
 
     def test_finish_error_sets_failed(self) -> None:
         logger = DebugLogger()
-        logger.add_line("amass", "x")
-        logger.finish("amass", "timeout after 30s")
-        assert logger._statuses["amass"] == "FAILED"
+        logger.add_line("subfinder", "x")
+        logger.finish("subfinder", "timeout after 30s")
+        assert logger._statuses["subfinder"] == "FAILED"
 
     def test_finish_stores_error_message(self) -> None:
         logger = DebugLogger()
@@ -99,8 +99,8 @@ class TestFinish:
 
     def test_finish_timeout_no_error_stored(self) -> None:
         logger = DebugLogger()
-        logger.finish("amass", None, timed_out=True)
-        assert logger._errors["amass"] is None
+        logger.finish("subfinder", None, timed_out=True)
+        assert logger._errors["subfinder"] is None
 
     def test_finish_timeout_takes_precedence_over_error(self) -> None:
         logger = DebugLogger()
@@ -187,7 +187,7 @@ class TestFormatLog:
 
     def test_format_log_includes_error(self) -> None:
         logger = DebugLogger()
-        logger.finish("amass", "binary not found")
+        logger.finish("subfinder", "binary not found")
         result = logger.format_log()
         assert "binary not found" in result
 

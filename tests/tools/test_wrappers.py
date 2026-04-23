@@ -1,4 +1,4 @@
-"""Tests for active tool wrappers (subfinder, amass, findomain, assetfinder,
+"""Tests for active tool wrappers (subfinder, findomain, assetfinder,
 dnsrecon, gobuster_dns, ffuf)."""
 
 from __future__ import annotations
@@ -9,7 +9,6 @@ import pytest
 
 
 from subdomainenum.models import EnumMode, ToolResult, VhostResult
-from subdomainenum.tools.amass import _parse_amass_output, run_amass
 from subdomainenum.tools.assetfinder import run_assetfinder
 from subdomainenum.tools.dnsrecon import run_dnsrecon
 from subdomainenum.tools.findomain import run_findomain
@@ -87,164 +86,6 @@ class TestRunSubfinder:
         ):
             result = run_subfinder("example.com")
         assert result.timed_out is False
-
-
-# ---------------------------------------------------------------------------
-# amass
-# ---------------------------------------------------------------------------
-
-
-class TestParseAmassOutput:
-    """Unit tests for _parse_amass_output — amass v4 graph format parser."""
-
-    def test_extracts_subdomain_fqdn(self) -> None:
-        lines = ["sub.example.com (FQDN) --> a_record --> 1.2.3.4 (IPAddress)"]
-        assert _parse_amass_output(lines, "example.com") == ["sub.example.com"]
-
-    def test_extracts_apex_domain(self) -> None:
-        lines = ["example.com (FQDN) --> a_record --> 1.2.3.4 (IPAddress)"]
-        assert _parse_amass_output(lines, "example.com") == ["example.com"]
-
-    def test_filters_out_external_fqdns(self) -> None:
-        lines = [
-            "example.com (FQDN) --> ns_record --> ns1.eurodns.com (FQDN)",
-            "ns1.eurodns.com (FQDN) --> a_record --> 199.167.66.107 (IPAddress)",
-        ]
-        result = _parse_amass_output(lines, "example.com")
-        assert result == ["example.com"]
-        assert "ns1.eurodns.com" not in result
-
-    def test_deduplicates_fqdns(self) -> None:
-        lines = [
-            "sub.example.com (FQDN) --> a_record --> 1.2.3.4 (IPAddress)",
-            "sub.example.com (FQDN) --> aaaa_record --> ::1 (IPAddress)",
-        ]
-        result = _parse_amass_output(lines, "example.com")
-        assert result.count("sub.example.com") == 1
-
-    def test_skips_non_fqdn_lines(self) -> None:
-        lines = [
-            "31.22.120.0/21 (Netblock) --> contains --> 1.2.3.4 (IPAddress)",
-            "12345 (ASN) --> managed_by --> ACME (RIROrganization)",
-            "[*] Some dnsrecon-style line",
-        ]
-        assert _parse_amass_output(lines, "example.com") == []
-
-    def test_empty_input(self) -> None:
-        assert _parse_amass_output([], "example.com") == []
-
-    def test_case_insensitive_normalisation(self) -> None:
-        lines = ["Sub.Example.COM (FQDN) --> a_record --> 1.2.3.4 (IPAddress)"]
-        result = _parse_amass_output(lines, "example.com")
-        assert result == ["sub.example.com"]
-
-    def test_multiple_subdomains_preserved_in_order(self) -> None:
-        lines = [
-            "a.example.com (FQDN) --> a_record --> 1.1.1.1 (IPAddress)",
-            "b.example.com (FQDN) --> a_record --> 2.2.2.2 (IPAddress)",
-        ]
-        result = _parse_amass_output(lines, "example.com")
-        assert result == ["a.example.com", "b.example.com"]
-
-    def test_strips_ansi_codes(self) -> None:
-        """ANSI escape sequences in amass output must not corrupt the FQDN capture."""
-        lines = ["\x1b[32msub.example.com\x1b[0m (FQDN) --> a_record --> 1.2.3.4 (IPAddress)"]
-        result = _parse_amass_output(lines, "example.com")
-        assert result == ["sub.example.com"]
-
-
-class TestRunAmass:
-    def test_returns_source_result(self) -> None:
-        with patch("subdomainenum.tools.amass.run_tool", return_value=([], False)):
-            result = run_amass("example.com")
-        assert isinstance(result, ToolResult)
-        assert result.name == "amass"
-
-    def test_command_contains_enum_and_domain(self) -> None:
-        with patch("subdomainenum.tools.amass.run_tool", return_value=([], False)) as mock:
-            run_amass("example.com")
-            cmd = mock.call_args[0][0]
-        assert "enum" in cmd
-        assert "example.com" in cmd
-        # -passive is deprecated; amass passive is the default
-        assert "-passive" not in cmd
-
-    def test_tool_missing(self) -> None:
-        with patch(
-            "subdomainenum.tools.amass.run_tool",
-            side_effect=RuntimeError("amass not found"),
-        ):
-            result = run_amass("example.com")
-        assert result.available is False
-
-    def test_parses_graph_format_output(self) -> None:
-        """run_amass must parse amass v4 graph-format output, not store raw lines."""
-        graph_lines = [
-            "sub.example.com (FQDN) --> a_record --> 1.2.3.4 (IPAddress)",
-            "example.com (FQDN) --> ns_record --> ns1.eurodns.com (FQDN)",
-            "ns1.eurodns.com (FQDN) --> a_record --> 5.6.7.8 (IPAddress)",
-        ]
-        with patch("subdomainenum.tools.amass.run_tool", return_value=(graph_lines, False)):
-            result = run_amass("example.com")
-        assert "sub.example.com" in result.subdomains
-        assert "example.com" in result.subdomains
-        assert "ns1.eurodns.com" not in result.subdomains
-
-    def test_cmd_cb_passed_to_run_tool(self) -> None:
-        def cb(cmd: str) -> None:
-            pass
-        with patch("subdomainenum.tools.amass.run_tool", return_value=([], False)) as mock:
-            run_amass("example.com", cmd_cb=cb)
-        assert mock.call_args.kwargs.get("cmd_cb") is cb
-
-    def test_ignore_returncode_is_true(self) -> None:
-        """amass exits non-zero on partial failures; results must still be parsed."""
-        with patch("subdomainenum.tools.amass.run_tool", return_value=([], False)) as mock:
-            run_amass("example.com")
-        assert mock.call_args.kwargs.get("ignore_returncode") is True
-
-    def test_no_active_flag_in_passive_mode(self) -> None:
-        with patch("subdomainenum.tools.amass.run_tool", return_value=([], False)) as mock:
-            run_amass("example.com", mode=EnumMode.PASSIVE)
-            cmd = mock.call_args[0][0]
-        assert "-active" not in cmd
-
-    def test_active_flag_in_active_mode(self) -> None:
-        with patch("subdomainenum.tools.amass.run_tool", return_value=([], False)) as mock:
-            run_amass("example.com", mode=EnumMode.ACTIVE)
-            cmd = mock.call_args[0][0]
-        assert "-active" in cmd
-
-    def test_active_flag_in_all_mode(self) -> None:
-        with patch("subdomainenum.tools.amass.run_tool", return_value=([], False)) as mock:
-            run_amass("example.com", mode=EnumMode.ALL)
-            cmd = mock.call_args[0][0]
-        assert "-active" in cmd
-
-    def test_timed_out_sets_timed_out_flag(self) -> None:
-        graph_lines = ["partial.example.com (FQDN) --> a_record --> 1.2.3.4 (IPAddress)"]
-        with patch("subdomainenum.tools.amass.run_tool", return_value=(graph_lines, True)):
-            result = run_amass("example.com")
-        assert result.timed_out is True
-
-    def test_normal_completion_timed_out_false(self) -> None:
-        with patch("subdomainenum.tools.amass.run_tool", return_value=([], False)):
-            result = run_amass("example.com")
-        assert result.timed_out is False
-
-    def test_no_brute_flag_without_wordlist(self) -> None:
-        """No wordlist → -brute and -w must not appear in the command."""
-        with patch("subdomainenum.tools.amass.run_tool", return_value=([], False)) as mock:
-            run_amass("example.com", mode=EnumMode.ACTIVE)
-            cmd = mock.call_args[0][0]
-        assert "-brute" not in cmd
-        assert "-w" not in cmd
-
-    def test_idle_timeout_forwarded_to_run_tool(self) -> None:
-        """idle_timeout kwarg is forwarded to run_tool."""
-        with patch("subdomainenum.tools.amass.run_tool", return_value=([], False)) as mock:
-            run_amass("example.com", idle_timeout=90)
-        assert mock.call_args.kwargs.get("idle_timeout") == 90
 
 
 # ---------------------------------------------------------------------------
@@ -801,22 +642,6 @@ class TestGobusterDnsFqdnCb:
                 "example.com", wordlist="/tmp/w.txt", fqdn_cb=seen.append,
             )
         assert seen == ["admin.example.com", "api.example.com"]
-
-
-class TestAmassFqdnCb:
-    def test_emits_in_scope_fqdn_from_graph_line(self) -> None:
-        seen: list[str] = []
-        with patch(
-            "subdomainenum.tools.amass.run_tool",
-            side_effect=_fake_run_tool([
-                "svc.example.com (FQDN) --> a_record --> 1.2.3.4 (IPAddress)",
-                "ns1.other.test (FQDN) --> a_record --> 5.6.7.8 (IPAddress)",
-                "svc.example.com (FQDN) --> aaaa_record --> ::1 (IPAddress)",
-            ]),
-        ):
-            result = run_amass("example.com", fqdn_cb=seen.append)
-        assert seen == ["svc.example.com"]
-        assert result.subdomains == ["svc.example.com"]
 
 
 class TestDnsreconFqdnCb:

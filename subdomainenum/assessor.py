@@ -13,7 +13,6 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Callable
 
-from subdomainenum.tools.amass import run_amass
 from subdomainenum.tools.assetfinder import run_assetfinder
 from subdomainenum.tools.dnsrecon import run_dnsrecon
 from subdomainenum.tools.findomain import run_findomain
@@ -56,8 +55,8 @@ def _run_passive_enum(
     :param finish_cb: Optional callback called when a tool completes,
         called as ``finish_cb(tool_name, error_or_none, timed_out)``.
     :param overall_mode: The mode passed to :func:`assess`; when ``EnumMode.ALL``
-        tools that also run in the active phase use a ``"<name> passive"`` key so
-        the debug log shows a distinct section for each phase.
+        dnsrecon uses the key ``"dnsrecon passive"`` so the debug log distinguishes
+        its passive run from any potential future active counterpart.
     :returns: List of :class:`~subdomainenum.models.ToolResult` objects.
     """
 
@@ -68,8 +67,6 @@ def _run_passive_enum(
     def _key(name: str) -> str:
         """Return the callback key for *name*, appending a phase suffix in ALL mode."""
         if overall_mode == EnumMode.ALL:
-            if name == "amass":
-                return "amass passive"
             if name == "dnsrecon":
                 return "dnsrecon passive"
         return name
@@ -94,15 +91,6 @@ def _run_passive_enum(
             domain,
             line_cb=_line_cb("subfinder"),
             cmd_cb=_cmd_cb("subfinder"),
-            fqdn_cb=fqdn_cb,
-        )
-
-    def _run_amass() -> ToolResult:
-        _cb("Running amass (passive)…")
-        return run_amass(
-            domain,
-            line_cb=_line_cb("amass"),
-            cmd_cb=_cmd_cb("amass"),
             fqdn_cb=fqdn_cb,
         )
 
@@ -135,7 +123,6 @@ def _run_passive_enum(
 
     tool_tasks: dict[str, Callable[[], ToolResult]] = {
         "subfinder": _run_subfinder,
-        "amass": _run_amass,
         "findomain": _run_findomain,
         "assetfinder": _run_assetfinder,
         "dnsrecon": _run_dnsrecon,
@@ -178,7 +165,7 @@ def _run_active_enum(
 ) -> list[ToolResult]:
     """Run the non-ffuf active tools in parallel.
 
-    The pool is always **amass + gobuster**.
+    The pool is **gobuster** only.
     Brute-force enumeration is covered by gobuster dns.
 
     :param domain: Target base domain.
@@ -190,9 +177,7 @@ def _run_active_enum(
         called as ``cmd_cb(tool_name, cmd_string)``.
     :param finish_cb: Optional callback called when a tool completes,
         called as ``finish_cb(tool_name, error_or_none, timed_out)``.
-    :param overall_mode: The mode passed to :func:`assess`; when ``EnumMode.ALL``
-        ``amass`` uses the ``"amass active"`` key so the debug log shows a
-        distinct section for each phase.
+    :param overall_mode: Reserved for API consistency; currently unused.
     :returns: List of :class:`~subdomainenum.models.ToolResult`.
     """
 
@@ -200,34 +185,17 @@ def _run_active_enum(
         if progress_cb:
             progress_cb(msg)
 
-    def _key(name: str) -> str:
-        if overall_mode == EnumMode.ALL and name == "amass":
-            return f"{name} active"
-        return name
-
     def _line_cb(tool: str) -> Callable[[str], None] | None:
         if debug_cb is None:
             return None
-        key = _key(tool)
-        return lambda line: debug_cb(key, line)
+        return lambda line: debug_cb(tool, line)
 
     def _cmd_cb(tool: str) -> Callable[[str], None] | None:
         if cmd_cb is None:
             return None
-        key = _key(tool)
-        return lambda cmd: cmd_cb(key, cmd)
+        return lambda cmd: cmd_cb(tool, cmd)
 
     tools: list[ToolResult] = []
-
-    def _run_amass_active() -> ToolResult:
-        _cb("Running amass (active)…")
-        return run_amass(
-            domain,
-            mode=EnumMode.ACTIVE,
-            line_cb=_line_cb("amass"),
-            cmd_cb=_cmd_cb("amass"),
-            fqdn_cb=fqdn_cb,
-        )
 
     def _run_gobuster() -> ToolResult:
         _cb("Running gobuster dns…")
@@ -240,7 +208,6 @@ def _run_active_enum(
         )
 
     tool_tasks: dict[str, Callable[[], ToolResult]] = {
-        "amass": _run_amass_active,
         "gobuster": _run_gobuster,
     }
     with ThreadPoolExecutor(max_workers=len(tool_tasks)) as pool:
@@ -252,7 +219,7 @@ def _run_active_enum(
                 result.mode = EnumMode.ACTIVE
                 tools.append(result)
                 if finish_cb:
-                    finish_cb(_key(tool_name), result.error, result.timed_out)
+                    finish_cb(tool_name, result.error, result.timed_out)
             except Exception as exc:
                 tools.append(
                     ToolResult(
@@ -263,7 +230,7 @@ def _run_active_enum(
                     )
                 )
                 if finish_cb:
-                    finish_cb(_key(tool_name), str(exc), False)
+                    finish_cb(tool_name, str(exc), False)
 
     return tools
 
@@ -484,8 +451,8 @@ def assess(
 ) -> EnumReport:
     """Run subdomain enumeration for *domain* and return an :class:`~subdomainenum.models.EnumReport`.
 
-    In ``ALL`` mode, the 5 passive tools and the 2 non-ffuf active tools
-    (amass + gobuster) run concurrently in two pools submitted to an outer
+    In ``ALL`` mode, the 4 passive tools and the 1 non-ffuf active tool
+    (gobuster) run concurrently in two pools submitted to an outer
     executor; ffuf runs after both pools drain so it can target IPs resolved
     from passive FQDNs.
 

@@ -70,10 +70,8 @@ def build_verdict(report: EnumReport) -> VerdictSummary:
         if t.available and t.error is None and not t.timed_out
     )
 
-    # Deduplicate by name while preserving first-seen order. In ALL mode amass
-    # and dnsrecon each produce two ToolResults (one per phase); naive list
-    # comprehensions would list them twice. A tool is "available" if at least
-    # one run found the binary; it appears in "missing" only if no run did.
+    # Deduplicate by name while preserving first-seen order. A tool is "available"
+    # if at least one run found the binary; it appears in "missing" only if no run did.
     tools_available = list(dict.fromkeys(
         t.name for t in report.tools if t.available
     ))

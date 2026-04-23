@@ -27,7 +27,7 @@ def run_tool(
     :param idle_timeout: When set, the process is killed after this many seconds
         of silence (no output lines received), even if *timeout* has not elapsed.
         The idle window resets on every output line.  Useful for long-running tools
-        like amass that produce bursts of output interspersed with quiet periods.
+        for tools that produce bursts of output interspersed with quiet periods.
     :param line_cb: Optional callback invoked with each non-empty line as it
         arrives from the process's output (useful for real-time debug output).
     :param cmd_cb: Optional callback invoked once with the full command string

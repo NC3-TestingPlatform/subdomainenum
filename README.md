@@ -3,7 +3,7 @@
 > Passive and active subdomain enumeration for any target domain — from the
 > command line or as a Python library.
 
-**subdomainenum** discovers subdomains through passive tools (subfinder, amass,
+**subdomainenum** discovers subdomains through passive tools (subfinder,
 findomain, assetfinder — which also queries crt.sh and other CT logs internally),
 optionally brute-forces DNS with gobuster, fuzzes virtual hosts via
 ffuf, resolves each result, and prints a colour-coded summary.
@@ -13,7 +13,7 @@ $ subdomainenum check example.com
 ```
 
 ![Python](https://img.shields.io/badge/python-%3E%3D3.11-blue)
-![Tests](https://img.shields.io/badge/tests-361%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-338%20passing-brightgreen)
 ![Coverage](https://img.shields.io/badge/coverage-99%25-brightgreen)
 ![License](https://img.shields.io/badge/license-GPLv3-lightgrey)
 
@@ -39,7 +39,6 @@ $ subdomainenum check example.com
 | Source / Mode      | Type    | What it does                                                                         |
 | ------------------ | ------- | ------------------------------------------------------------------------------------ |
 | **subfinder**      | Passive | Runs `subfinder -d domain -silent -all` (queries all sources)                        |
-| **amass**          | Passive | Runs `amass enum -d domain`; parses v4 graph-format output to extract FQDNs         |
 | **findomain**      | Passive | Runs `findomain --target domain --quiet`                                             |
 | **assetfinder**    | Passive | Runs `assetfinder --subs-only domain`                                                |
 | **dnsrecon**       | Passive | Runs `std,srv` with Bing/Yandex/crt.sh (`-b -y -k`), SPF reverse (`-s`), AXFR zone transfer (`-a`), and DNSSEC zone walk (`-z`). AXFR and zone walk target the domain's authoritative nameservers (public DNS infrastructure), not the target application — so they are classified as passive. Adds `--shodan --shodan-active` when `SHODAN_API_KEY` is in the environment. |
@@ -48,8 +47,8 @@ $ subdomainenum check example.com
 | **DNS resolution** | —       | All discovered FQDNs are resolved (A + AAAA in parallel per FQDN) — `A`/`AAAA` queries fan out on a shared 256-worker pool, final batch resolves in up to 100 parallel workers. A `StreamingResolver` overlaps DNS with enumeration: each tool pushes FQDNs into the resolver as soon as it parses them, so by the time enumeration finishes most lookups are already complete. |
 
 Passive and active sources can be run independently or combined (`--mode all`).
-In `--mode all`, the passive pool (5 workers) and the active pool
-(2 workers: amass, gobuster) run concurrently. `ffuf` then fans out one
+In `--mode all`, the passive pool (4 workers) and the active pool
+(1 worker: gobuster) run concurrently. `ffuf` then fans out one
 worker per resolved target IP (capped at 8). IPs looked up while building
 `ffuf` URLs are cached so no FQDN is DNS-resolved twice.
 
@@ -92,7 +91,6 @@ Run `subdomainenum info` to check which tools are detected on your `$PATH`:
 | Tool        | Install                                                                    |
 | ----------- | -------------------------------------------------------------------------- |
 | subfinder   | `go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest` |
-| amass       | `go install github.com/owasp-amass/amass/v4/...@latest`                    |
 | findomain   | Download from https://github.com/Findomain/Findomain/releases              |
 | assetfinder | `go install github.com/tomnomnom/assetfinder@latest`                       |
 | dnsrecon    | `pip install git+https://github.com/darkoperator/dnsrecon.git@master` (installed from source in the Docker image) |
@@ -106,7 +104,7 @@ Run `subdomainenum info` to check which tools are detected on your `$PATH`:
 ### Passive enumeration (default)
 
 ```bash
-# Queries subfinder, amass, findomain, assetfinder, dnsrecon passive (crt.sh via -k)
+# Queries subfinder, findomain, assetfinder, dnsrecon passive (crt.sh via -k)
 subdomainenum check example.com
 ```
 
@@ -303,8 +301,6 @@ subdomainenum/
 │   └── tools/
 │       ├── tool_runner.py   subprocess wrapper used by all active tools
 │       ├── subfinder.py     subfinder wrapper
-│       ├── amass.py         amass enum wrapper (passive is amass's default;
-│       │                      active no longer uses -brute -w — see gobuster)
 │       ├── findomain.py     findomain wrapper
 │       ├── assetfinder.py   assetfinder wrapper
 │       ├── dnsrecon.py      dnsrecon wrapper (std,srv + Bing/Yandex/crt.sh/SPF
@@ -351,7 +347,7 @@ pytest tests/test_assessor.py -v
 pytest tests/test_cli.py::TestCheckCommand -v
 ```
 
-The test suite has **361 tests** and achieves **99% coverage** across all modules.
+The test suite has **338 tests** and achieves **99% coverage** across all modules.
 
 All DNS I/O (`dns.resolver.Resolver.resolve`), TLS
 sockets, and subprocess calls are mocked at the boundary — no test touches a real

@@ -35,12 +35,12 @@ class Status(str, Enum):
 class EnumMode(str, Enum):
     """Enumeration strategy mode.
 
-    - ``passive`` – passive-only: subfinder, amass (passive graph), findomain,
-      assetfinder, dnsrecon (``std,srv`` with Bing/Yandex/crt.sh/SPF/whois,
+    - ``passive`` – passive-only: subfinder, findomain, assetfinder,
+      dnsrecon (``std,srv`` with Bing/Yandex/crt.sh/SPF/whois,
       plus ``snoop`` when a wordlist is supplied).
-    - ``active``  – active-only: amass (active, no brute-force), gobuster dns
-      (brute-force, requires a wordlist), dnsrecon (``std,srv`` with AXFR and
-      DNSSEC zone walk), and ffuf for vhost fuzzing when URLs are provided.
+    - ``active``  – active-only: gobuster dns (brute-force, requires a wordlist),
+      dnsrecon (``std,srv`` with AXFR and DNSSEC zone walk), and ffuf for vhost
+      fuzzing when URLs are provided.
     - ``all``     – run passive + active concurrently; dnsrecon is only run
       passively in this mode to avoid duplicating work.
     """

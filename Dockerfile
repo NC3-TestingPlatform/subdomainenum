@@ -1,10 +1,9 @@
 # ===========================================================================
-# Stage 1 – Go-based tools: subfinder, amass, gobuster, assetfinder
+# Stage 1 – Go-based tools: subfinder, gobuster, assetfinder, ffuf
 # ===========================================================================
 FROM golang:latest AS go-builder
 
 RUN go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest && \
-    go install github.com/owasp-amass/amass/v4/...@latest && \
     go install github.com/OJ/gobuster/v3@latest && \
     go install github.com/tomnomnom/assetfinder@latest && \
     go install github.com/ffuf/ffuf/v2@latest
@@ -32,7 +31,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy Go-compiled binaries first so the dnsrecon step (below) doesn't
 # invalidate this cheap layer when DNSRECON_REF changes.
 COPY --from=go-builder /go/bin/subfinder    /usr/local/bin/subfinder
-COPY --from=go-builder /go/bin/amass        /usr/local/bin/amass
 COPY --from=go-builder /go/bin/gobuster     /usr/local/bin/gobuster
 COPY --from=go-builder /go/bin/assetfinder  /usr/local/bin/assetfinder
 COPY --from=go-builder /go/bin/ffuf         /usr/local/bin/ffuf
