@@ -43,7 +43,7 @@ $ subdomainenum check example.com
 | **assetfinder**    | Passive | Runs `assetfinder --subs-only domain`                                                |
 | **dnsrecon**       | Passive | Runs `std,srv` with Bing/Yandex/crt.sh (`-b -y -k`), SPF reverse (`-s`), AXFR zone transfer (`-a`), and DNSSEC zone walk (`-z`). AXFR and zone walk target the domain's authoritative nameservers (public DNS infrastructure), not the target application — so they are classified as passive. Adds `--shodan --shodan-active` when `SHODAN_API_KEY` is in the environment. |
 | **gobuster dns**   | Active  | Brute-forces DNS with a wordlist (`gobuster dns --domain domain -w wordlist`)        |
-| **ffuf**           | Active  | Fuzzes virtual hosts via the `Host` header against a target URL                      |
+| **ffuf**           | Active  | Fuzzes virtual hosts via the `Host` header. Target IPs are derived automatically — `--url` is optional (see [Vhost fuzzing](#vhost-fuzzing)). |
 | **DNS resolution** | —       | All discovered FQDNs are resolved (A + AAAA in parallel per FQDN) — `A`/`AAAA` queries fan out on a shared 256-worker pool, final batch resolves in up to 100 parallel workers. A `StreamingResolver` overlaps DNS with enumeration: each tool pushes FQDNs into the resolver as soon as it parses them, so by the time enumeration finishes most lookups are already complete. |
 
 Passive and active sources can be run independently or combined (`--mode all`).
@@ -108,7 +108,7 @@ Run `subdomainenum info` to check which tools are detected on your `$PATH`:
 subdomainenum check example.com
 ```
 
-### Active enumeration (DNS brute-force + optional vhost fuzzing)
+### Active enumeration (DNS brute-force + vhost fuzzing)
 
 ```bash
 # Brute-force DNS with a wordlist
@@ -116,7 +116,13 @@ subdomainenum check example.com \
   --mode active \
   --wordlist /opt/SecLists/Discovery/DNS/subdomains-top1million-5000.txt
 
-# Brute-force + vhost fuzzing
+# Brute-force + vhost fuzzing — ffuf runs automatically on all resolved IPs
+subdomainenum check example.com \
+  --mode active \
+  --wordlist /opt/SecLists/Discovery/DNS/subdomains-top1million-5000.txt \
+  --wordlist /opt/SecLists/Discovery/Web-Content/raft-small-words.txt
+
+# Pin ffuf to a specific IP (e.g. a load-balancer VIP or internal host)
 subdomainenum check example.com \
   --mode active \
   --wordlist /opt/SecLists/Discovery/DNS/subdomains-top1million-5000.txt \
@@ -126,11 +132,40 @@ subdomainenum check example.com \
 ### All sources combined
 
 ```bash
+# Passive + active, vhost fuzzing auto-targets all discovered IPs
+subdomainenum check example.com \
+  --mode all \
+  --wordlist /opt/SecLists/Discovery/DNS/subdomains-top1million-5000.txt
+
+# Override the ffuf target with a specific URL
 subdomainenum check example.com \
   --mode all \
   --wordlist /opt/SecLists/Discovery/DNS/subdomains-top1million-5000.txt \
   --url http://10.0.0.1
 ```
+
+### Vhost fuzzing
+
+ffuf is launched automatically whenever a wordlist is supplied — no `--url` flag required.
+
+**How target IPs are chosen:**
+
+1. The base domain (`example.com`) is resolved (A + AAAA).
+2. Every subdomain discovered in the passive phase is resolved in parallel via the shared `StreamingResolver` — results already cached from enumeration are reused at zero extra DNS cost.
+3. All unique IPs are collected and deduplicated. IPv6 addresses are bracketed (`[::1]`).
+4. ffuf is launched once per IP, up to 8 workers in parallel, fuzzing the `Host` header against `http://<ip>`.
+
+If `--url` is given, that single URL is used instead and no automatic resolution happens.
+
+**When does ffuf actually run?**
+
+| Mode | ffuf runs? | Target source |
+|------|-----------|---------------|
+| `passive` | No | — |
+| `active` | Yes (if wordlist provided) | Base domain IPs + active-enum subdomain IPs |
+| `all` | Yes (if wordlist provided) | Base domain IPs + passive subdomain IPs |
+
+Results are deduplicated: the same virtual host found across multiple IPs appears once.
 
 ### JSON output
 
@@ -192,7 +227,7 @@ report = assess(
     "example.com",
     mode=EnumMode.PASSIVE,          # passive | active | all
     wordlist=None,                  # required for active/all
-    url=None,                       # optional: target URL for ffuf vhost fuzzing
+    url=None,                       # optional: pin ffuf to one URL; omit to auto-target all resolved IPs
     timeout=5.0,                    # DNS resolution timeout per query
     progress_cb=print,              # optional: called with status strings
 )
