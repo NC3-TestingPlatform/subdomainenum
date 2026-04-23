@@ -107,6 +107,20 @@ class TestFinish:
         logger.finish("dnsrecon", "some error", timed_out=True)
         assert logger._statuses["dnsrecon"] == "TIMEOUT"
 
+    def test_finish_records_elapsed(self) -> None:
+        logger = DebugLogger()
+        logger.add_line("subfinder", "sub.example.com")
+        logger.finish("subfinder", None)
+        assert "subfinder" in logger._elapsed
+        assert logger._elapsed["subfinder"] >= 0.0
+
+    def test_finish_records_elapsed_for_never_started_tool(self) -> None:
+        """finish() called without add_line/set_command (e.g. ffuf skipped) gives elapsed=0.0s."""
+        logger = DebugLogger()
+        logger.finish("ffuf", "no URL resolved")
+        assert "ffuf" in logger._elapsed
+        assert logger._elapsed["ffuf"] >= 0.0
+
 
 class TestSetInvocation:
     def test_set_invocation_stores_version(self) -> None:
@@ -230,6 +244,21 @@ class TestFormatLog:
         logger.finish("gobuster", None, timed_out=True)
         result = logger.format_log()
         assert "status=TIMEOUT" in result
+
+    def test_format_log_includes_elapsed_after_finish(self) -> None:
+        logger = DebugLogger()
+        logger.add_line("subfinder", "x")
+        logger.finish("subfinder", None)
+        result = logger.format_log()
+        assert "elapsed=" in result
+        assert result.count("elapsed=") == 1
+
+    def test_format_log_no_elapsed_for_running_source(self) -> None:
+        """elapsed= must not appear for a source that has not yet called finish()."""
+        logger = DebugLogger()
+        logger.add_line("subfinder", "x")  # RUNNING — finish() not called
+        result = logger.format_log()
+        assert "elapsed=" not in result
 
 
 class TestSaveToFile:

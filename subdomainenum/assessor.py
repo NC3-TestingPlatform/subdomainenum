@@ -360,48 +360,6 @@ def _run_ffuf_fanout(
     return tool, all_vhosts
 
 
-def _run_active(
-    domain: str,
-    wordlist: str,
-    urls: list[str],
-    progress_cb: Callable[[str], None] | None,
-    debug_cb: Callable[[str, str], None] | None = None,
-    cmd_cb: Callable[[str, str], None] | None = None,
-    finish_cb: Callable[[str, str | None, bool], None] | None = None,
-    overall_mode: EnumMode | None = None,
-    fqdn_cb: Callable[[str], None] | None = None,
-) -> tuple[list[ToolResult], list[VhostResult]]:
-    """Run all active enumeration tools (enumeration + ffuf).
-
-    Thin wrapper: dispatches to :func:`_run_active_enum` for amass/gobuster
-    (parallel) and :func:`_run_ffuf_fanout` for ffuf (parallel per URL). Used by
-    :func:`assess` in ``ACTIVE`` mode; in ``ALL`` mode the two helpers are invoked
-    directly so the enumeration pool can run concurrently with passive.
-
-    :returns: Tuple of (tools, vhosts).
-    """
-    tools = _run_active_enum(
-        domain,
-        wordlist=wordlist,
-        progress_cb=progress_cb,
-        debug_cb=debug_cb,
-        cmd_cb=cmd_cb,
-        finish_cb=finish_cb,
-        overall_mode=overall_mode,
-        fqdn_cb=fqdn_cb,
-    )
-    ffuf_tool, vhosts = _run_ffuf_fanout(
-        domain,
-        wordlist=wordlist,
-        urls=urls,
-        progress_cb=progress_cb,
-        debug_cb=debug_cb,
-        cmd_cb=cmd_cb,
-        finish_cb=finish_cb,
-    )
-    tools.append(ffuf_tool)
-    return tools, vhosts
-
 
 def _resolve_all(
     fqdns: list[str],
@@ -578,16 +536,9 @@ def assess(
 
         elif mode == EnumMode.ACTIVE:
             _cb("Starting active enumeration…")
-            urls, pre_resolved = _compute_ffuf_urls(
-                domain,
-                url,
-                passive_fqdns=[],
-                resolver=resolver,
-            )
-            active_tools, vhosts = _run_active(
+            active_enum_tools = _run_active_enum(
                 domain,
                 wordlist=wordlist,
-                urls=urls,
                 progress_cb=progress_cb,
                 debug_cb=debug_cb,
                 cmd_cb=cmd_cb,
@@ -595,7 +546,25 @@ def assess(
                 overall_mode=mode,
                 fqdn_cb=resolver.submit,
             )
-            all_tools.extend(active_tools)
+            all_tools.extend(active_enum_tools)
+
+            enum_fqdns = [sub for tool in active_enum_tools for sub in tool.subdomains]
+            urls, pre_resolved = _compute_ffuf_urls(
+                domain,
+                url,
+                passive_fqdns=enum_fqdns,
+                resolver=resolver,
+            )
+            ffuf_tool, vhosts = _run_ffuf_fanout(
+                domain,
+                wordlist=wordlist,
+                urls=urls,
+                progress_cb=progress_cb,
+                debug_cb=debug_cb,
+                cmd_cb=cmd_cb,
+                finish_cb=finish_cb,
+            )
+            all_tools.append(ffuf_tool)
             all_vhosts.extend(vhosts)
 
         else:  # EnumMode.ALL — fuse passive + non-ffuf active phases

@@ -8,6 +8,7 @@ No Rich / terminal dependency — pure stdlib.
 from __future__ import annotations
 
 import datetime
+import time
 from pathlib import Path
 from threading import Lock
 
@@ -39,6 +40,8 @@ class DebugLogger:
         self._errors: dict[str, str | None] = {}
         self._statuses: dict[str, str] = {}
         self._invocation: dict[str, str] = {}
+        self._start_times: dict[str, float] = {}
+        self._elapsed: dict[str, float] = {}
 
     # ------------------------------------------------------------------
     # Callbacks wired to assess()
@@ -50,6 +53,7 @@ class DebugLogger:
             self._order.append(source)
             self._lines[source] = []
             self._statuses[source] = "PENDING"
+            self._start_times[source] = time.monotonic()
 
     def add_line(self, source: str, line: str) -> None:
         """Append an output *line* from *source*.
@@ -84,6 +88,7 @@ class DebugLogger:
         """
         with self._lock:
             self._register(source)
+            self._elapsed[source] = time.monotonic() - self._start_times[source]
             self._errors[source] = error
             if timed_out:
                 self._statuses[source] = "TIMEOUT"
@@ -134,6 +139,7 @@ class DebugLogger:
             commands = dict(self._commands)
             statuses = dict(self._statuses)
             errors = dict(self._errors)
+            elapsed_snap = dict(self._elapsed)
             invocation = dict(self._invocation)
 
         now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -152,7 +158,8 @@ class DebugLogger:
 
         for source in order:
             status = statuses.get(source, "PENDING")
-            parts.append(f"[{source}]  status={status}")
+            elapsed = elapsed_snap.get(source)
+            parts.append(f"[{source}]  status={status}" + (f"  elapsed={elapsed:.1f}s" if elapsed is not None else ""))
 
             cmd = commands.get(source)
             if cmd:
