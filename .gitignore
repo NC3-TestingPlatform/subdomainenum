@@ -3,6 +3,7 @@ __pycache__/
 *.py[cod]
 *.pyo
 *.pyd
+*.so
 .Python
 *.egg
 *.egg-info/
@@ -42,10 +43,7 @@ junit/
 *.swo
 *~
 .DS_Store
-
-# Distribution
-dist/
-build/
+Thumbs.db
 
 # Reports output directory
 reports/

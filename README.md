@@ -73,7 +73,7 @@ External tools are optional — absent tools are silently skipped. Run
 **From source (recommended):**
 
 ```bash
-git clone https://github.com/t0kubetsu/subdomainenum.git
+git clone https://github.com/NC3-TestingPlatform/subdomainenum.git
 cd subdomainenum
 python -m venv .venv
 source .venv/bin/activate
