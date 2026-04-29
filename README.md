@@ -17,6 +17,8 @@ $ subdomainenum check example.com
 ![Coverage](https://img.shields.io/badge/coverage-99%25-brightgreen)
 ![License](https://img.shields.io/badge/license-GPLv3-lightgrey)
 
+Part of the [NC3-TestingPlatform](https://github.com/NC3-TestingPlatform).
+
 ---
 
 ## Contents
