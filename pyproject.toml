@@ -41,6 +41,12 @@ dependencies = [
     "typer>=0.12",
 ]
 
+[project.urls]
+Homepage = "https://github.com/NC3-TestingPlatform/subdomainenum"
+Repository = "https://github.com/NC3-TestingPlatform/subdomainenum"
+Issues = "https://github.com/NC3-TestingPlatform/subdomainenum/issues"
+Changelog = "https://github.com/NC3-TestingPlatform/subdomainenum/blob/main/CHANGELOG.md"
+
 [project.scripts]
 subdomainenum = "subdomainenum.cli:app"
 
