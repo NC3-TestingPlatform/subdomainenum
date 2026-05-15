@@ -9,6 +9,17 @@ Version numbers follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ## [Unreleased]
 
+### Changed
+- `assessor` and `dns_utils`: `logger = logging.getLogger("subdomainenum")`
+  moved below all imports to comply with E402 (module-level import order).
+- `cli`: network errors (any non-`ValueError` exception from `assess()`) now
+  exit with code `2`; `ValueError` (e.g. missing wordlist) exits `1`.
+- `reporter`: `print_report()` renamed to `print_full_report()` for
+  consistency with all other platform modules; `print_report` is kept as a
+  deprecated alias. `Console` created with `highlight=False`. `save_report()`
+  now raises `ValueError` for unsupported file extensions instead of silently
+  falling back to plain text.
+
 ---
 
 ## [0.14.1] — 2026-05-15
