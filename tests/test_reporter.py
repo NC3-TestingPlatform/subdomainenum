@@ -225,9 +225,20 @@ class TestPrintReport:
 
 
 class TestSaveReport:
-    def test_save_report_writes_json(self, tmp_path) -> None:
-        out = tmp_path / "report.json"
-        save_report(_make_report(), out)
+    def test_save_report_writes_plain_text(self, tmp_path) -> None:
+        from subdomainenum.reporter import console
+
+        out = tmp_path / "report.txt"
+        # Render into the module-level console so there is recorded content to save.
+        print_report(_make_report(), console=console)
+        save_report(str(out))
         assert out.exists()
-        data = json.loads(out.read_text())
-        assert data["domain"] == "example.com"
+        assert "example.com" in out.read_text()
+
+    def test_save_report_writes_text_for_unknown_ext(self, tmp_path) -> None:
+        from subdomainenum.reporter import console
+
+        out = tmp_path / "report.log"
+        print_report(_make_report(), console=console)
+        save_report(str(out))
+        assert out.exists()

@@ -33,7 +33,7 @@ from subdomainenum.assessor import assess
 from subdomainenum.constants import ACTIVE_TOOLS, detect_tools, get_install_hint
 from subdomainenum.debug_logger import DebugLogger
 from subdomainenum.models import EnumMode
-from subdomainenum.reporter import print_report, to_dict
+from subdomainenum.reporter import console, print_report, save_report, to_dict
 
 app = typer.Typer(
     name="subdomainenum",
@@ -41,7 +41,6 @@ app = typer.Typer(
     add_completion=False,
 )
 
-_console = Console(stderr=False)
 _err = Console(stderr=True)
 
 
@@ -194,7 +193,7 @@ def check(
             report = assess(domain, **assess_kwargs)
         except Exception as exc:
             if json_output:
-                _console.print(json.dumps({"error": str(exc)}, indent=2))
+                console.print(json.dumps({"error": str(exc)}, indent=2))
             else:
                 _err.print(f"[red]Error:[/red] {exc}")
             raise typer.Exit(code=1)
@@ -208,10 +207,15 @@ def check(
         _print_json(report)
         return
 
-    print_report(report, console=_console)
+    print_report(report, console=console)
 
     if output:
-        _save_report(report, output)
+        try:
+            save_report(output)
+            console.print(f"[dim]Report saved to[/dim] {output}")
+        except (ValueError, OSError) as exc:
+            _err.print(f"[red]Error:[/red] Cannot write to {output!r}: {exc}")
+            raise typer.Exit(code=1)
 
 
 # ---------------------------------------------------------------------------
@@ -233,7 +237,7 @@ def info() -> None:
             f"[{style}]{'yes' if avail else 'no'}[/{style}]",
             get_install_hint(name) if not avail else "",
         )
-    _console.print(table)
+    console.print(table)
 
 
 # ---------------------------------------------------------------------------
@@ -246,36 +250,7 @@ def _print_json(report) -> None:
 
     :param report: :class:`~subdomainenum.models.EnumReport` to serialise.
     """
-    _console.print(json.dumps(to_dict(report), indent=2))
-
-
-def _save_report(report, path: str) -> None:
-    """Render *report* to a file at *path*.
-
-    The output format is inferred from the file extension:
-    ``.txt`` → plain text (no ANSI codes), ``.svg`` → SVG image,
-    ``.html`` → self-contained HTML page.  Any other extension is
-    treated as plain text.
-
-    :param report: :class:`~subdomainenum.models.EnumReport` to render.
-    :param path: Destination file path.
-    """
-    from rich.console import Console as RichConsole
-
-    ext = Path(path).suffix.lower()
-
-    rec_console = RichConsole(record=True, highlight=False, width=120)
-    print_report(report, console=rec_console)
-
-    if ext == ".svg":
-        content = rec_console.export_svg(title=f"subdomainenum — {report.domain}")
-    elif ext == ".html":
-        content = rec_console.export_html(inline_styles=True)
-    else:
-        content = rec_console.export_text()
-
-    Path(path).write_text(content, encoding="utf-8")
-    _console.print(f"[dim]Report saved to[/dim] {path}")
+    console.print(json.dumps(to_dict(report), indent=2))
 
 
 if __name__ == "__main__":  # pragma: no cover

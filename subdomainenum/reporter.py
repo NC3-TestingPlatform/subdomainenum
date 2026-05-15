@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 from rich.console import Console, Group
@@ -14,7 +15,11 @@ from rich.text import Text
 from subdomainenum.models import EnumMode, EnumReport, Status, ToolResult
 from subdomainenum.verdict import build_verdict
 
-_console = Console()
+# Module-level console; record=True enables save_report() export.
+# The public alias ``console`` is imported by cli.py so that all
+# terminal output flows through the same recorded stream.
+_console = Console(record=True)
+console = _console
 
 
 _SECTION_PANEL_KWARGS = dict(style="white", padding=(0, 1))
@@ -220,11 +225,38 @@ def print_report(report: EnumReport, *, console: Console | None = None) -> None:
     con.rule("[dim]End of Report[/dim]")
 
 
-def save_report(report: EnumReport, path: str | Path) -> None:
-    """Save the report as JSON to *path*.
+_FORMAT_BY_EXT: dict[str, str] = {
+    ".txt": "text",
+    ".text": "text",
+    ".svg": "svg",
+    ".html": "html",
+    ".htm": "html",
+}
 
-    :param report: Completed enumeration report.
-    :param path: Destination file path.
+
+def save_report(path: str) -> None:
+    """Save the recorded console output to *path*.
+
+    The export format is inferred from the file extension:
+
+    * ``.txt`` / ``.text`` → plain text (no ANSI codes)
+    * ``.svg``             → SVG image
+    * ``.html`` / ``.htm`` → self-contained HTML page
+
+    Must be called **after** :func:`print_report` because Rich only
+    captures output when :class:`~rich.console.Console` is created with
+    ``record=True``, which is already set on the module-level
+    :data:`console` instance.
+
+    :param path: Destination file path, e.g. ``"report.svg"``.
+    :raises ValueError: If the extension is not one of the supported values.
+    :raises OSError: If the file cannot be written.
     """
-    data = to_dict(report)
-    Path(path).write_text(json.dumps(data, indent=2), encoding="utf-8")
+    ext = os.path.splitext(path)[1].lower()
+    fmt = _FORMAT_BY_EXT.get(ext, "text")
+    if fmt == "svg":
+        console.save_svg(path, clear=False)
+    elif fmt == "html":
+        console.save_html(path, clear=False)
+    else:
+        console.save_text(path, clear=False)

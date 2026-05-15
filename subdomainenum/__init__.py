@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-try:
-    from importlib.metadata import version
+from importlib.metadata import PackageNotFoundError, version
 
+try:
     __version__ = version("subdomainenum")
-except Exception:
+except PackageNotFoundError:  # pragma: no cover – only when package not installed
     __version__ = "0.14.0"
 
 # NullHandler so library users who have not configured logging
