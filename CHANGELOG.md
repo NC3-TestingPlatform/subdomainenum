@@ -9,6 +9,16 @@ Version numbers follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ## [Unreleased]
 
+### Changed
+- `__init__`: version fallback now catches `PackageNotFoundError` explicitly
+  instead of bare `Exception`, consistent with all other platform modules.
+- `reporter`: exposes a public `console` alias (`Console(record=True)`) and
+  a `save_report(path)` function supporting `.txt`, `.svg`, and `.html`
+  extensions (unknown extensions fall back to plain text); the old JSON-only
+  `save_report(report, path)` signature has been replaced.
+- CLI migrated to use `reporter.console` and `reporter.save_report()` —
+  the private `_save_report()` helper in `cli.py` has been removed.
+
 ---
 
 ## [0.14.0] — 2026-04-27
