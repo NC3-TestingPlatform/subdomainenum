@@ -172,3 +172,52 @@ When committing a set of changes, bump the version using semver:
 Two files must always be updated together:
 - `pyproject.toml` → `version = "x.y.z"`
 - `subdomainenum/__init__.py` → fallback `__version__ = "x.y.z"` (the `except` branch)
+
+## GitHub Release
+
+Every version bump **must** be followed by a GitHub release. Do not leave a version tag without a release.
+
+**After bumping the version, committing, and pushing:**
+
+```bash
+# Tag the version commit and push
+git tag vX.Y.Z
+git push origin vX.Y.Z
+
+# Create the GitHub release
+gh release create vX.Y.Z \
+  --title "vX.Y.Z" \
+  --notes "$(cat <<'EOF'
+## What's changed
+
+<Copy the ### Added / ### Changed / ### Fixed / ### Removed blocks verbatim
+from the [X.Y.Z] section in CHANGELOG.md>
+
+## Impact
+
+<1–3 sentences: what this means for users — what improves, what breaks,
+whether the upgrade is urgent (e.g. new enumeration source, tool wrapper
+fix, DNS resolution change, Docker image update, etc.)>
+
+## Migration
+
+<Only for minor/major bumps: list any CLI flags, `assess()` parameters,
+`ACTIVE_TOOLS` registry changes, or Docker environment variable renames
+that require user action. Omit for patch releases.>
+
+---
+
+**Full changelog:** https://github.com/NC3-TestingPlatform/subdomainenum/blob/master/CHANGELOG.md
+EOF
+)"
+```
+
+**Release body checklist:**
+- [ ] Changelog entries for this version copied verbatim
+- [ ] Impact note written (even one sentence is enough)
+- [ ] Migration note present if CLI flags, `assess()` signature, or Docker env vars changed
+- [ ] Full changelog link at the bottom
+
+**Conventions:**
+- Tag and title: `vX.Y.Z` — semver, `v`-prefixed, must match `pyproject.toml` version
+- Do not mark as draft or pre-release for normal semver releases
