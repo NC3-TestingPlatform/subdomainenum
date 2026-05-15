@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import json
 import os
-from pathlib import Path
 
 from rich.console import Console, Group
 from rich.table import Table
@@ -18,7 +16,7 @@ from subdomainenum.verdict import build_verdict
 # Module-level console; record=True enables save_report() export.
 # The public alias ``console`` is imported by cli.py so that all
 # terminal output flows through the same recorded stream.
-_console = Console(record=True)
+_console = Console(record=True, highlight=False)
 console = _console
 
 
@@ -107,7 +105,7 @@ def _status_style(status: Status) -> str:
     }.get(status, "white")
 
 
-def print_report(report: EnumReport, *, console: Console | None = None) -> None:
+def print_full_report(report: EnumReport, *, console: Console | None = None) -> None:
     """Render the full enumeration report to the terminal using Rich.
 
     :param report: Completed enumeration report.
@@ -225,6 +223,9 @@ def print_report(report: EnumReport, *, console: Console | None = None) -> None:
     con.rule("[dim]End of Report[/dim]")
 
 
+print_report = print_full_report  # deprecated
+
+
 _FORMAT_BY_EXT: dict[str, str] = {
     ".txt": "text",
     ".text": "text",
@@ -253,7 +254,11 @@ def save_report(path: str) -> None:
     :raises OSError: If the file cannot be written.
     """
     ext = os.path.splitext(path)[1].lower()
-    fmt = _FORMAT_BY_EXT.get(ext, "text")
+    fmt = _FORMAT_BY_EXT.get(ext)
+    if fmt is None:
+        raise ValueError(
+            f"Unsupported file extension {ext!r}. Use .txt, .svg, or .html."
+        )
     if fmt == "svg":
         console.save_svg(path, clear=False)
     elif fmt == "html":

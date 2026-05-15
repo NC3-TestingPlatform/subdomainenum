@@ -8,7 +8,7 @@ from io import StringIO
 from rich.console import Console
 
 from subdomainenum.models import EnumMode, EnumReport, ToolResult, Status, SubdomainResult, VhostResult
-from subdomainenum.reporter import print_report, save_report, to_dict
+from subdomainenum.reporter import print_full_report, save_report, to_dict
 
 
 def _make_report() -> EnumReport:
@@ -96,19 +96,19 @@ class TestPrintReport:
         console = Console(file=StringIO(), width=120)
         report = _make_report()
         # Should not raise
-        print_report(report, console=console)
+        print_full_report(report, console=console)
 
     def test_output_contains_domain(self) -> None:
         buf = StringIO()
         console = Console(file=buf, width=120, highlight=False)
-        print_report(_make_report(), console=console)
+        print_full_report(_make_report(), console=console)
         output = buf.getvalue()
         assert "example.com" in output
 
     def test_output_contains_subdomain(self) -> None:
         buf = StringIO()
         console = Console(file=buf, width=120, highlight=False)
-        print_report(_make_report(), console=console)
+        print_full_report(_make_report(), console=console)
         output = buf.getvalue()
         assert "sub.example.com" in output
 
@@ -116,13 +116,13 @@ class TestPrintReport:
         buf = StringIO()
         console = Console(file=buf, width=120, highlight=False)
         report = EnumReport(domain="example.com", mode=EnumMode.PASSIVE, subdomains=[], tools=[])
-        print_report(report, console=console)
+        print_full_report(report, console=console)
         assert "No subdomains found" in buf.getvalue()
 
     def test_mode_column_shown_in_all_mode(self) -> None:
         buf = StringIO()
         console = Console(file=buf, width=200, highlight=False)
-        print_report(_make_report(), console=console)
+        print_full_report(_make_report(), console=console)
         output = buf.getvalue()
         assert "Mode" in output
         assert "passive" in output
@@ -137,7 +137,7 @@ class TestPrintReport:
             mode=EnumMode.ALL,
             tools=[ToolResult(name="dnsrecon", mode=EnumMode.PASSIVE)],
         )
-        print_report(report, console=console)
+        print_full_report(report, console=console)
         assert "passive+active" in buf.getvalue()
 
     def test_mode_column_hidden_in_passive_mode(self) -> None:
@@ -148,7 +148,7 @@ class TestPrintReport:
             mode=EnumMode.PASSIVE,
             tools=[ToolResult(name="subfinder", mode=EnumMode.PASSIVE)],
         )
-        print_report(report, console=console)
+        print_full_report(report, console=console)
         output = buf.getvalue()
         assert "Mode" not in output
 
@@ -160,7 +160,7 @@ class TestPrintReport:
             mode=EnumMode.ACTIVE,
             tools=[ToolResult(name="gobuster", mode=EnumMode.ACTIVE)],
         )
-        print_report(report, console=console)
+        print_full_report(report, console=console)
         output = buf.getvalue()
         assert "Mode" not in output
 
@@ -172,7 +172,7 @@ class TestPrintReport:
             mode=EnumMode.ALL,
             tools=[ToolResult(name="unknown")],
         )
-        print_report(report, console=console)
+        print_full_report(report, console=console)
         output = buf.getvalue()
         assert "Mode" in output
         assert "—" in output
@@ -180,31 +180,31 @@ class TestPrintReport:
     def test_output_contains_header_rule(self) -> None:
         buf = StringIO()
         console = Console(file=buf, width=120, highlight=False)
-        print_report(_make_report(), console=console)
+        print_full_report(_make_report(), console=console)
         assert "Subdomain Enumeration Report" in buf.getvalue()
 
     def test_output_contains_end_of_report(self) -> None:
         buf = StringIO()
         console = Console(file=buf, width=120, highlight=False)
-        print_report(_make_report(), console=console)
+        print_full_report(_make_report(), console=console)
         assert "End of Report" in buf.getvalue()
 
     def test_output_contains_summary_panel(self) -> None:
         buf = StringIO()
         console = Console(file=buf, width=120, highlight=False)
-        print_report(_make_report(), console=console)
+        print_full_report(_make_report(), console=console)
         assert "Summary" in buf.getvalue()
 
     def test_output_contains_vhost_section_title_when_present(self) -> None:
         buf = StringIO()
         console = Console(file=buf, width=120, highlight=False)
-        print_report(_make_report(), console=console)
+        print_full_report(_make_report(), console=console)
         assert "Virtual Hosts (ffuf)" in buf.getvalue()
 
     def test_sources_table_has_timed_out_column(self) -> None:
         buf = StringIO()
         console = Console(file=buf, width=200, highlight=False)
-        print_report(_make_report(), console=console)
+        print_full_report(_make_report(), console=console)
         assert "Timed Out" in buf.getvalue()
 
     def test_sources_timed_out_flag_rendered(self) -> None:
@@ -218,7 +218,7 @@ class TestPrintReport:
                 ToolResult(name="findomain", mode=EnumMode.PASSIVE, timed_out=False),
             ],
         )
-        print_report(report, console=console)
+        print_full_report(report, console=console)
         output = buf.getvalue()
         assert "Timed Out" in output
         assert "yes" in output
@@ -230,15 +230,13 @@ class TestSaveReport:
 
         out = tmp_path / "report.txt"
         # Render into the module-level console so there is recorded content to save.
-        print_report(_make_report(), console=console)
+        print_full_report(_make_report(), console=console)
         save_report(str(out))
         assert out.exists()
         assert "example.com" in out.read_text()
 
-    def test_save_report_writes_text_for_unknown_ext(self, tmp_path) -> None:
-        from subdomainenum.reporter import console
-
+    def test_save_report_raises_for_unknown_ext(self, tmp_path) -> None:
+        import pytest
         out = tmp_path / "report.log"
-        print_report(_make_report(), console=console)
-        save_report(str(out))
-        assert out.exists()
+        with pytest.raises(ValueError, match="Unsupported file extension"):
+            save_report(str(out))

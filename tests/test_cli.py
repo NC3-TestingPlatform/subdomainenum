@@ -85,12 +85,15 @@ class TestCheckCommand:
             result = runner.invoke(app, ["check", "example.com", "--mode", "passive"])
         assert result.exit_code != 0
 
-    def test_json_output_on_error(self) -> None:
+    def test_network_error_exits_with_code_2(self) -> None:
         with patch("subdomainenum.cli.assess", side_effect=RuntimeError("boom")):
-            result = runner.invoke(app, ["check", "example.com", "--mode", "passive", "--json"])
-        assert result.exit_code != 0
-        data = json.loads(result.stdout)
-        assert "error" in data
+            result = runner.invoke(app, ["check", "example.com", "--mode", "passive"])
+        assert result.exit_code == 2
+
+    def test_value_error_exits_with_code_1(self) -> None:
+        with patch("subdomainenum.cli.assess", side_effect=ValueError("bad input")):
+            result = runner.invoke(app, ["check", "example.com", "--mode", "passive"])
+        assert result.exit_code == 1
 
 
 class TestDebugLogMode:

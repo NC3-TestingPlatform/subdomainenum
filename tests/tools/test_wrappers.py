@@ -8,7 +8,7 @@ from unittest.mock import patch
 import pytest
 
 
-from subdomainenum.models import EnumMode, ToolResult, VhostResult
+from subdomainenum.models import ToolResult, VhostResult
 from subdomainenum.tools.assetfinder import run_assetfinder
 from subdomainenum.tools.dnsrecon import run_dnsrecon
 from subdomainenum.tools.findomain import run_findomain

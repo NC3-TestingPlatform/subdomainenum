@@ -506,7 +506,10 @@ class TestRunActive:
         """finish_cb is called for each active source (gobuster, ffuf)."""
         finish_calls: list[tuple] = []
         src = _make_source()
-        finish_cb = lambda name, err, timed_out: finish_calls.append((name, err, timed_out))
+
+        def finish_cb(name: str, err: str | None, timed_out: bool) -> None:
+            finish_calls.append((name, err, timed_out))
+
         with patch("subdomainenum.assessor.run_gobuster_dns", return_value=src):
             _run_active_enum("example.com", wordlist="/tmp/w.txt", progress_cb=None, finish_cb=finish_cb)
             _run_ffuf_fanout("example.com", wordlist="/tmp/w.txt", urls=[], progress_cb=None, finish_cb=finish_cb)
@@ -521,7 +524,9 @@ class TestRunActive:
         """finish_cb is called for ffuf when urls are provided."""
         finish_calls: list[tuple] = []
         src = _make_source()
-        finish_cb = lambda name, err, timed_out: finish_calls.append((name, err, timed_out))
+
+        def finish_cb(name: str, err: str | None, timed_out: bool) -> None:
+            finish_calls.append((name, err, timed_out))
         with (
             patch("subdomainenum.assessor.run_gobuster_dns", return_value=src),
             patch("subdomainenum.assessor.run_ffuf", return_value=[]),
@@ -617,7 +622,10 @@ class TestPhaseAwareKeys:
         """Run active phase and collect the source-name arguments passed to finish_cb."""
         finish_names: list[str] = []
         src = _make_source("sub.example.com")
-        finish_cb = lambda name, err, timed_out: finish_names.append(name)
+
+        def finish_cb(name: str, err: str | None, timed_out: bool) -> None:
+            finish_names.append(name)
+
         with patch("subdomainenum.assessor.run_gobuster_dns", return_value=src):
             _run_active_enum(
                 "example.com",

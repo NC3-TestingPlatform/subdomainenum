@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 from concurrent.futures import ThreadPoolExecutor
 
 import dns.exception
 import dns.resolver
+
+logger = logging.getLogger("subdomainenum")
 
 _IP_RDTYPES = ("A", "AAAA")
 

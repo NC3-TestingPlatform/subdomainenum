@@ -10,6 +10,7 @@ Typical usage::
 
 from __future__ import annotations
 
+import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Callable
 
@@ -30,6 +31,7 @@ from subdomainenum.models import (
     VhostResult,
 )
 
+logger = logging.getLogger("subdomainenum")
 
 # Cap ffuf per-URL fan-out; existing ffuf -t 40 already saturates I/O inside each worker.
 _FFUF_MAX_WORKERS = 8

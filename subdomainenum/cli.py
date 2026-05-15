@@ -33,7 +33,7 @@ from subdomainenum.assessor import assess
 from subdomainenum.constants import ACTIVE_TOOLS, detect_tools, get_install_hint
 from subdomainenum.debug_logger import DebugLogger
 from subdomainenum.models import EnumMode
-from subdomainenum.reporter import console, print_report, save_report, to_dict
+from subdomainenum.reporter import console, print_full_report, save_report, to_dict
 
 app = typer.Typer(
     name="subdomainenum",
@@ -191,12 +191,12 @@ def check(
 
         try:
             report = assess(domain, **assess_kwargs)
-        except Exception as exc:
-            if json_output:
-                console.print(json.dumps({"error": str(exc)}, indent=2))
-            else:
-                _err.print(f"[red]Error:[/red] {exc}")
+        except ValueError as exc:
+            _err.print(f"[red]Error:[/red] {exc}")
             raise typer.Exit(code=1)
+        except Exception as exc:
+            _err.print(f"[red]Connection/network error:[/red] {exc}")
+            raise typer.Exit(code=2)
 
     if logger is not None:
         log_path = _auto_log_path(domain)
@@ -207,7 +207,7 @@ def check(
         _print_json(report)
         return
 
-    print_report(report, console=console)
+    print_full_report(report, console=console)
 
     if output:
         try:
