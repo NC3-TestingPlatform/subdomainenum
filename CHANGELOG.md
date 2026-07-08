@@ -9,6 +9,10 @@ Version numbers follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ## [Unreleased]
 
+---
+
+## [0.14.3] — 2026-07-08
+
 ### Changed
 - `assessor.assess()`: ffuf vhost fuzzing no longer waits for the passive and
   active enumeration pools to fully drain before starting. It now runs a
@@ -22,7 +26,7 @@ Version numbers follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html
   across both waves are deduplicated by vhost name before being merged.
 - `assessor`: dnsrecon is now invoked with an explicit `--threads 30` (was
   unset, falling back to dnsrecon's low internal default). Speeds up the
-  parallelizable lookups (Bing/Yandex/crt.sh/SPF reverse); the sequential
+  parallelizable lookups (Bing/Yandex/SPF reverse); the sequential
   AXFR / DNSSEC NSEC zone-walk passes (`-a`/`-z`) are unaffected and keep
   their full coverage.
 - `assessor`: ffuf's "wave 2" fan-out (bonus IPs discovered via enumeration,
@@ -124,7 +128,8 @@ Version numbers follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ---
 
-[Unreleased]: https://github.com/NC3-TestingPlatform/subdomainenum/compare/v0.14.2...HEAD
+[Unreleased]: https://github.com/NC3-TestingPlatform/subdomainenum/compare/v0.14.3...HEAD
+[0.14.3]: https://github.com/NC3-TestingPlatform/subdomainenum/compare/v0.14.2...v0.14.3
 [0.14.2]: https://github.com/NC3-TestingPlatform/subdomainenum/compare/v0.14.1...v0.14.2
 [0.14.1]: https://github.com/NC3-TestingPlatform/subdomainenum/compare/v0.14.0...v0.14.1
 [0.14.0]: https://github.com/NC3-TestingPlatform/subdomainenum/compare/v0.1.0...v0.14.0
