@@ -9,6 +9,38 @@ Version numbers follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ## [Unreleased]
 
+### Changed
+- `assessor.assess()`: ffuf vhost fuzzing no longer waits for the passive and
+  active enumeration pools to fully drain before starting. It now runs a
+  "wave 1" pass concurrently with enumeration against whatever target is
+  already known (an explicit `--url`, or the base domain's own resolved
+  IP(s)) — the common single-IP case. A "wave 2" pass (usually empty) fuzzes
+  any additional IPs only discoverable via enumeration (passive FQDNs /
+  gobuster hits) once the pools drain. This removes ffuf from the critical
+  path in `active`/`all` modes and can substantially cut total scan time for
+  large wordlists. Report output (`vhosts`, `tools`) is unchanged — results
+  across both waves are deduplicated by vhost name before being merged.
+- `assessor`: dnsrecon is now invoked with an explicit `--threads 30` (was
+  unset, falling back to dnsrecon's low internal default). Speeds up the
+  parallelizable lookups (Bing/Yandex/crt.sh/SPF reverse); the sequential
+  AXFR / DNSSEC NSEC zone-walk passes (`-a`/`-z`) are unaffected and keep
+  their full coverage.
+- `assessor`: ffuf's "wave 2" fan-out (bonus IPs discovered via enumeration,
+  beyond the primary wave-1 target) now runs with a 90s per-URL timeout
+  instead of the 300s default. A single enumeration-discovered IP that is
+  unreachable from the scanner (e.g. a DNS record pointing at a CGNAT or
+  VPN-mesh address) previously hung for the full 5-minute timeout and could
+  dominate total scan time; observed legitimate wave-2 targets finish in
+  well under a minute. Wave 1 keeps the full 300s budget.
+- `tools.dnsrecon`: dropped the `-k` (crt.sh) flag from dnsrecon's
+  invocation. subfinder already queries crt.sh as one of its built-in
+  sources (concurrently, in the same passive pool), and dnsrecon's own
+  crt.sh client hardcodes an unconfigurable retry policy (20 attempts, up
+  to 60s backoff between tries) that can burn a large chunk of the passive
+  phase's wall-clock whenever crt.sh — a free, frequently-overloaded,
+  unauthenticated service — returns 502/503/429 or times out. No coverage
+  is lost; this removes duplicated, unreliable work.
+
 ---
 
 ## [0.14.2] — 2026-05-15

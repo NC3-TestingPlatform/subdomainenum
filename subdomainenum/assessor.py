@@ -36,6 +36,18 @@ logger = logging.getLogger("subdomainenum")
 # Cap ffuf per-URL fan-out; existing ffuf -t 40 already saturates I/O inside each worker.
 _FFUF_MAX_WORKERS = 8
 
+# dnsrecon's own --threads default is low; raising it speeds up the
+# parallelizable lookups (Bing/Yandex/crt.sh/SPF) without affecting the
+# inherently sequential AXFR / DNSSEC NSEC zone-walk passes.
+_DNSRECON_THREADS = 30
+
+# Per-URL timeout for ffuf's "wave 2" fan-out (bonus IPs discovered via
+# enumeration, beyond the primary wave-1 target). Lower than ffuf's 300s
+# default so one unreachable target (private/CGNAT/VPN address leaked into
+# DNS) can't dominate the scan; observed legitimate wave-2 runs finish well
+# under a minute.
+_FFUF_WAVE2_TIMEOUT = 90
+
 
 def _run_passive_enum(
     domain: str,
@@ -118,6 +130,7 @@ def _run_passive_enum(
         _cb("Running dnsrecon (passive)…")
         return run_dnsrecon(
             domain,
+            threads=_DNSRECON_THREADS,
             line_cb=_line_cb("dnsrecon"),
             cmd_cb=_cmd_cb("dnsrecon"),
             fqdn_cb=fqdn_cb,
@@ -242,6 +255,7 @@ def _run_ffuf_fanout(
     *,
     wordlist: str,
     urls: list[str],
+    timeout: int = 300,
     progress_cb: Callable[[str], None] | None = None,
     debug_cb: Callable[[str, str], None] | None = None,
     cmd_cb: Callable[[str, str], None] | None = None,
@@ -254,6 +268,12 @@ def _run_ffuf_fanout(
     :param urls: List of target URLs; ffuf is launched once per URL in a thread pool
         capped at :data:`_FFUF_MAX_WORKERS`. Empty list → ffuf is skipped and the
         returned :class:`ToolResult` is marked unavailable.
+    :param timeout: Maximum seconds to wait for each per-URL ffuf run. IPs
+        that are unreachable from the scanner (e.g. a DNS record pointing at
+        a private/VPN address) hang on every fuzzed request rather than
+        failing fast, so this bounds how long one bad target can dominate
+        the fan-out; a lower value than the 300s default is used for
+        enumeration-discovered "bonus" targets (see :func:`assess`).
     :param progress_cb: Optional callback for progress messages.
     :param debug_cb: Optional callback ``debug_cb(ffuf_key, line)``.
     :param cmd_cb: Optional callback ``cmd_cb(ffuf_key, cmd_string)``.
@@ -292,6 +312,7 @@ def _run_ffuf_fanout(
                 domain,
                 url=target_url,
                 wordlist=wordlist,
+                timeout=timeout,
                 line_cb=_line,
                 cmd_cb=_cmd,
             )
@@ -454,9 +475,13 @@ def assess(
     """Run subdomain enumeration for *domain* and return an :class:`~subdomainenum.models.EnumReport`.
 
     In ``ALL`` mode, the 4 passive tools and the 1 non-ffuf active tool
-    (gobuster) run concurrently in two pools submitted to an outer
-    executor; ffuf runs after both pools drain so it can target IPs resolved
-    from passive FQDNs.
+    (gobuster) run concurrently in two pools submitted to an outer executor.
+    ffuf starts immediately (wave 1) against whatever target is already known
+    — an explicit *url*, or the base domain's own resolved IP(s) — running
+    concurrently with the passive/active pools rather than waiting for them.
+    Once those pools drain, a second ffuf wave targets any additional IPs
+    only discoverable via enumeration (FQDNs found by passive tools /
+    gobuster); this second wave is empty in the common single-IP case.
 
     :param domain: Target base domain (e.g. ``"example.com"``).
     :param mode: Enumeration strategy – ``passive``, ``active``, or ``all``.
@@ -488,7 +513,35 @@ def assess(
     # Streaming DNS resolver: tools call resolver.submit(fqdn) via fqdn_cb as
     # soon as a new FQDN is parsed, so resolution overlaps with enumeration.
     resolver = StreamingResolver(resolver=lambda f: resolve_ips(f, timeout=timeout))
+    ffuf_pool: ThreadPoolExecutor | None = None
     try:
+        # Wave 1: as soon as the target(s) we already know about (an explicit
+        # --url, or the base domain's own resolved IPs) are available, start
+        # ffuf against them concurrently with passive/active enumeration
+        # instead of waiting for those pools to fully drain. This is the
+        # common case (a single target IP) and removes ffuf from the critical
+        # path entirely. Any IPs only discoverable via enumeration (FQDNs
+        # found by passive tools / gobuster) are fuzzed in wave 2 below.
+        wave1_urls: list[str] = []
+        ffuf_wave1_future = None
+        if mode in (EnumMode.ACTIVE, EnumMode.ALL):
+            wave1_urls, wave1_cache = _compute_ffuf_urls(
+                domain, url, passive_fqdns=[], resolver=resolver
+            )
+            pre_resolved.update(wave1_cache)
+            if wave1_urls:
+                ffuf_pool = ThreadPoolExecutor(max_workers=1)
+                ffuf_wave1_future = ffuf_pool.submit(
+                    _run_ffuf_fanout,
+                    domain,
+                    wordlist=wordlist,
+                    urls=wave1_urls,
+                    progress_cb=progress_cb,
+                    debug_cb=debug_cb,
+                    cmd_cb=cmd_cb,
+                    finish_cb=finish_cb,
+                )
+
         if mode == EnumMode.PASSIVE:
             _cb("Starting passive enumeration…")
             all_tools.extend(
@@ -502,6 +555,7 @@ def assess(
                     fqdn_cb=resolver.submit,
                 )
             )
+            enum_fqdns: list[str] = []
 
         elif mode == EnumMode.ACTIVE:
             _cb("Starting active enumeration…")
@@ -516,25 +570,7 @@ def assess(
                 fqdn_cb=resolver.submit,
             )
             all_tools.extend(active_enum_tools)
-
             enum_fqdns = [sub for tool in active_enum_tools for sub in tool.subdomains]
-            urls, pre_resolved = _compute_ffuf_urls(
-                domain,
-                url,
-                passive_fqdns=enum_fqdns,
-                resolver=resolver,
-            )
-            ffuf_tool, vhosts = _run_ffuf_fanout(
-                domain,
-                wordlist=wordlist,
-                urls=urls,
-                progress_cb=progress_cb,
-                debug_cb=debug_cb,
-                cmd_cb=cmd_cb,
-                finish_cb=finish_cb,
-            )
-            all_tools.append(ffuf_tool)
-            all_vhosts.extend(vhosts)
 
         else:  # EnumMode.ALL — fuse passive + non-ffuf active phases
             _cb("Starting enumeration (passive + active concurrent)…")
@@ -565,28 +601,67 @@ def assess(
 
             all_tools.extend(passive_tools)
             all_tools.extend(active_enum_tools)
+            enum_fqdns = [sub for tool in passive_tools for sub in tool.subdomains]
 
-            # ffuf runs after both pools drain so it can target passive-enriched IPs.
-            # _compute_ffuf_urls pulls from the shared resolver's cache, so the
-            # base domain and passive FQDNs are not resolved twice.
-            passive_fqdns = [sub for tool in passive_tools for sub in tool.subdomains]
-            urls, pre_resolved = _compute_ffuf_urls(
-                domain,
-                url,
-                passive_fqdns=passive_fqdns,
-                resolver=resolver,
+        if mode in (EnumMode.ACTIVE, EnumMode.ALL):
+            # Wave 2: any URLs not already covered by wave 1 — e.g. IPs behind
+            # FQDNs discovered during enumeration. Empty in the common
+            # single-IP case, so this is usually a no-op. _compute_ffuf_urls
+            # pulls from the shared resolver's cache, so the base domain and
+            # already-discovered FQDNs are not resolved twice.
+            all_urls, pre_resolved_full = _compute_ffuf_urls(
+                domain, url, passive_fqdns=enum_fqdns, resolver=resolver
             )
-            ffuf_tool, vhosts = _run_ffuf_fanout(
-                domain,
-                wordlist=wordlist,
-                urls=urls,
-                progress_cb=progress_cb,
-                debug_cb=debug_cb,
-                cmd_cb=cmd_cb,
-                finish_cb=finish_cb,
-            )
+            pre_resolved.update(pre_resolved_full)
+            wave1_set = set(wave1_urls)
+            wave2_urls = [u for u in all_urls if u not in wave1_set]
+
+            wave_results: list[tuple[ToolResult, list[VhostResult]]] = []
+            if ffuf_wave1_future is not None:
+                wave_results.append(ffuf_wave1_future.result())
+            if wave2_urls:
+                # A shorter timeout than the default 300s: these are "bonus"
+                # targets beyond the primary one (wave 1), and some are only
+                # reachable-in-theory — e.g. a DNS record pointing at a
+                # CGNAT (100.64.0.0/10) or VPN-mesh ULA address that hangs on
+                # every fuzzed request. One such target should not be able to
+                # consume 5 minutes of the total scan by itself.
+                wave_results.append(
+                    _run_ffuf_fanout(
+                        domain,
+                        wordlist=wordlist,
+                        urls=wave2_urls,
+                        timeout=_FFUF_WAVE2_TIMEOUT,
+                        progress_cb=progress_cb,
+                        debug_cb=debug_cb,
+                        cmd_cb=cmd_cb,
+                        finish_cb=finish_cb,
+                    )
+                )
+
+            if wave_results:
+                seen_vhosts: set[str] = set()
+                merged_vhosts: list[VhostResult] = []
+                for _, vhosts in wave_results:
+                    for v in vhosts:
+                        if v.vhost not in seen_vhosts:
+                            seen_vhosts.add(v.vhost)
+                            merged_vhosts.append(v)
+                ffuf_tool = ToolResult(
+                    name="ffuf",
+                    subdomains=[v.vhost for v in merged_vhosts],
+                    mode=EnumMode.ACTIVE,
+                )
+            else:
+                ffuf_tool = ToolResult(
+                    name="ffuf", available=False, error="no URL resolved", mode=EnumMode.ACTIVE
+                )
+                if finish_cb:
+                    finish_cb("ffuf", "no URL resolved", False)
+                merged_vhosts = []
+
             all_tools.append(ffuf_tool)
-            all_vhosts.extend(vhosts)
+            all_vhosts.extend(merged_vhosts)
 
         # Deduplicate FQDNs across all tools, track which tool found each.
         fqdn_tools: dict[str, list[str]] = {}
@@ -615,6 +690,8 @@ def assess(
             pre_resolved=merged_cache,
         )
     finally:
+        if ffuf_pool is not None:
+            ffuf_pool.shutdown(wait=False)
         resolver.shutdown()
 
     return EnumReport(

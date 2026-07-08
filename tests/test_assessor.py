@@ -104,10 +104,13 @@ class TestAssess:
             patch("subdomainenum.assessor._resolve_all", return_value=[]),
             patch("subdomainenum.assessor.resolve_ips", return_value=[]),
         ):
-            assess("example.com", mode=EnumMode.ACTIVE, wordlist="/tmp/w.txt", url=None)
+            report = assess("example.com", mode=EnumMode.ACTIVE, wordlist="/tmp/w.txt", url=None)
         mock_passive.assert_not_called()
-        _, kwargs = mock_ffuf.call_args
-        assert kwargs["urls"] == []
+        # No URL is ever resolvable, so ffuf never runs (neither wave 1 nor wave 2).
+        mock_ffuf.assert_not_called()
+        ffuf_tool = next(t for t in report.tools if t.name == "ffuf")
+        assert ffuf_tool.available is False
+        assert ffuf_tool.error == "no URL resolved"
 
     def test_explicit_url_not_overridden(self) -> None:
         """When url is explicitly provided, resolve_ips is not called."""
@@ -181,9 +184,11 @@ class TestAssess:
             ),
         ):
             assess("example.com", mode=EnumMode.ALL, wordlist="/tmp/w.txt")
-        _, kwargs = mock_ffuf.call_args
-        assert "http://1.2.3.4" in kwargs["urls"]
-        assert "http://5.6.7.8" in kwargs["urls"]
+        # Wave 1 fuzzes the base domain's own IP concurrently with enumeration;
+        # wave 2 fuzzes the passive-discovered IP once enumeration drains.
+        all_urls = [u for call in mock_ffuf.call_args_list for u in call.kwargs["urls"]]
+        assert "http://1.2.3.4" in all_urls
+        assert "http://5.6.7.8" in all_urls
 
     def test_active_mode_only_uses_domain_ips(self) -> None:
         """In ACTIVE-only mode with no enum discoveries, ffuf targets only the base domain IP."""
@@ -233,9 +238,11 @@ class TestAssess:
             ),
         ):
             assess("example.com", mode=EnumMode.ACTIVE, wordlist="/tmp/w.txt")
-        _, kwargs = mock_ffuf.call_args
-        assert "http://1.2.3.4" in kwargs["urls"]
-        assert "http://5.6.7.8" in kwargs["urls"]
+        # Wave 1 fuzzes the base domain's own IP concurrently with enumeration;
+        # wave 2 fuzzes the gobuster-discovered IP once enumeration drains.
+        all_urls = [u for call in mock_ffuf.call_args_list for u in call.kwargs["urls"]]
+        assert "http://1.2.3.4" in all_urls
+        assert "http://5.6.7.8" in all_urls
 
     def test_duplicate_ips_deduplicated_in_urls(self) -> None:
         """The same IP from multiple passive subdomains appears only once in urls."""
@@ -268,6 +275,56 @@ class TestAssess:
         # admin.example.com found by both URLs — must appear only once
         assert len(vhosts) == 1
         assert vhosts[0].vhost == "admin.example.com"
+
+    def test_assess_merges_vhosts_from_both_ffuf_waves(self) -> None:
+        """Vhosts found in wave 1 (base domain IP) and wave 2 (enum-discovered
+        IP) are merged into the report, with cross-wave duplicates dropped."""
+        from subdomainenum.models import VhostResult
+
+        passive_src = _make_source("sub.example.com", name="subfinder")
+        hit_common = VhostResult(vhost="admin.example.com", status_code=200, content_length=100)
+        hit_extra = VhostResult(vhost="staging.example.com", status_code=200, content_length=50)
+
+        def _ffuf_side_effect(_domain, *, wordlist, urls, **_kw):
+            if urls == ["http://1.2.3.4"]:
+                return (ToolResult(name="ffuf", mode=EnumMode.ACTIVE), [hit_common])
+            if urls == ["http://5.6.7.8"]:
+                return (ToolResult(name="ffuf", mode=EnumMode.ACTIVE), [hit_common, hit_extra])
+            return (ToolResult(name="ffuf", mode=EnumMode.ACTIVE), [])
+
+        with (
+            patch("subdomainenum.assessor._run_passive_enum", return_value=[passive_src]),
+            patch("subdomainenum.assessor._run_active_enum", return_value=[]),
+            patch("subdomainenum.assessor._run_ffuf_fanout", side_effect=_ffuf_side_effect),
+            patch("subdomainenum.assessor._resolve_all", return_value=[]),
+            patch(
+                "subdomainenum.assessor.resolve_ips",
+                side_effect=lambda fqdn, **_kw: ["1.2.3.4"] if fqdn == "example.com" else ["5.6.7.8"],
+            ),
+        ):
+            report = assess("example.com", mode=EnumMode.ALL, wordlist="/tmp/w.txt")
+
+        vhost_names = {v.vhost for v in report.vhosts}
+        assert vhost_names == {"admin.example.com", "staging.example.com"}
+
+    def test_finish_cb_called_when_no_ffuf_url_resolved(self) -> None:
+        """finish_cb fires for 'ffuf' with the no-URL error when neither wave finds a target."""
+        finish_calls: list[tuple] = []
+        with (
+            patch("subdomainenum.assessor._run_passive_enum", return_value=[]),
+            patch("subdomainenum.assessor._run_active_enum", return_value=[]),
+            patch("subdomainenum.assessor._run_ffuf_fanout") as mock_ffuf,
+            patch("subdomainenum.assessor._resolve_all", return_value=[]),
+            patch("subdomainenum.assessor.resolve_ips", return_value=[]),
+        ):
+            assess(
+                "example.com",
+                mode=EnumMode.ACTIVE,
+                wordlist="/tmp/w.txt",
+                finish_cb=lambda *args: finish_calls.append(args),
+            )
+        mock_ffuf.assert_not_called()
+        assert ("ffuf", "no URL resolved", False) in finish_calls
 
 
 # ---------------------------------------------------------------------------
