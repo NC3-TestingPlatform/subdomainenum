@@ -13,7 +13,7 @@ $ subdomainenum check example.com
 ```
 
 ![Python](https://img.shields.io/badge/python-%3E%3D3.11-blue)
-![Tests](https://img.shields.io/badge/tests-339%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-343%20passing-brightgreen)
 ![Coverage](https://img.shields.io/badge/coverage-99%25-brightgreen)
 ![License](https://img.shields.io/badge/license-GPLv3-lightgrey)
 
@@ -43,16 +43,23 @@ Part of the [NC3-TestingPlatform](https://github.com/NC3-TestingPlatform).
 | **subfinder**      | Passive | Runs `subfinder -d domain -silent -all` (queries all sources)                        |
 | **findomain**      | Passive | Runs `findomain --target domain --quiet`                                             |
 | **assetfinder**    | Passive | Runs `assetfinder --subs-only domain`                                                |
-| **dnsrecon**       | Passive | Runs `std,srv` with Bing/Yandex/crt.sh (`-b -y -k`), SPF reverse (`-s`), AXFR zone transfer (`-a`), and DNSSEC zone walk (`-z`). AXFR and zone walk target the domain's authoritative nameservers (public DNS infrastructure), not the target application — so they are classified as passive. Adds `--shodan --shodan-active` when `SHODAN_API_KEY` is in the environment. |
+| **dnsrecon**       | Passive | Runs `std,srv` with Bing/Yandex (`-b -y`), SPF reverse (`-s`), AXFR zone transfer (`-a`), and DNSSEC zone walk (`-z`), with `--threads 30`. AXFR and zone walk target the domain's authoritative nameservers (public DNS infrastructure), not the target application — so they are classified as passive. crt.sh (`-k`) is intentionally **not** queried: subfinder already covers crt.sh as one of its built-in sources, and dnsrecon's own crt.sh client hardcodes an unconfigurable retry policy (20 attempts, up to 60s backoff) that can stall on crt.sh's frequent outages. Adds `--shodan --shodan-active` when `SHODAN_API_KEY` is in the environment. |
 | **gobuster dns**   | Active  | Brute-forces DNS with a wordlist (`gobuster dns --domain domain -w wordlist`)        |
 | **ffuf**           | Active  | Fuzzes virtual hosts via the `Host` header. Target IPs are derived automatically — `--url` is optional (see [Vhost fuzzing](#vhost-fuzzing)). |
 | **DNS resolution** | —       | All discovered FQDNs are resolved (A + AAAA in parallel per FQDN) — `A`/`AAAA` queries fan out on a shared 256-worker pool, final batch resolves in up to 100 parallel workers. A `StreamingResolver` overlaps DNS with enumeration: each tool pushes FQDNs into the resolver as soon as it parses them, so by the time enumeration finishes most lookups are already complete. |
 
 Passive and active sources can be run independently or combined (`--mode all`).
 In `--mode all`, the passive pool (4 workers) and the active pool
-(1 worker: gobuster) run concurrently. `ffuf` then fans out one
-worker per resolved target IP (capped at 8). IPs looked up while building
-`ffuf` URLs are cached so no FQDN is DNS-resolved twice.
+(1 worker: gobuster) run concurrently. `ffuf` is not gated on either pool
+draining first: a "wave 1" pass starts immediately against whatever target
+is already known (an explicit `--url`, or the base domain's own resolved
+IP(s)), running concurrently with enumeration — the common single-IP case.
+A "wave 2" pass (usually empty) fuzzes any additional IPs only discoverable
+via enumeration once the pools drain, one worker per URL (capped at 8) and
+a shorter 90s-per-URL timeout — bonus targets shouldn't be able to burn the
+full 300s each, e.g. when a DNS record points at an unreachable
+private/CGNAT/VPN address. IPs looked up while building `ffuf` URLs are
+cached so no FQDN is DNS-resolved twice.
 
 ---
 
@@ -106,7 +113,7 @@ Run `subdomainenum info` to check which tools are detected on your `$PATH`:
 ### Passive enumeration (default)
 
 ```bash
-# Queries subfinder, findomain, assetfinder, dnsrecon passive (crt.sh via -k)
+# Queries subfinder (crt.sh + other sources), findomain, assetfinder, dnsrecon passive
 subdomainenum check example.com
 ```
 
@@ -150,24 +157,22 @@ subdomainenum check example.com \
 
 ffuf is launched automatically whenever a wordlist is supplied — no `--url` flag required.
 
-**How target IPs are chosen:**
+**How target IPs are chosen, and when ffuf runs — two waves:**
 
-1. The base domain (`example.com`) is resolved (A + AAAA).
-2. Every subdomain discovered in the passive phase is resolved in parallel via the shared `StreamingResolver` — results already cached from enumeration are reused at zero extra DNS cost.
-3. All unique IPs are collected and deduplicated. IPv6 addresses are bracketed (`[::1]`).
-4. ffuf is launched once per IP, up to 8 workers in parallel, fuzzing the `Host` header against `http://<ip>`.
+1. **Wave 1 (immediate, concurrent with enumeration):** the base domain (`example.com`) is resolved (A + AAAA) right away and ffuf starts fuzzing it in the background while passive/active enumeration is still running — it is not gated on either pool draining. This covers the common single-target-IP case with ffuf entirely off the critical path. Uses the full 300s timeout.
+2. **Wave 2 (after enumeration drains, usually a no-op):** every subdomain discovered during enumeration is resolved in parallel via the shared `StreamingResolver` — results already cached from wave 1 / enumeration are reused at zero extra DNS cost. Any IPs not already covered by wave 1 are fuzzed here, one worker per IP (capped at 8 in parallel), with a shorter 90s-per-URL timeout so one slow or unreachable bonus target (e.g. a DNS record pointing at a private/CGNAT/VPN address) can't dominate total scan time.
+3. All unique IPs across both waves are deduplicated. IPv6 addresses are bracketed (`[::1]`).
+4. Each wave fuzzes the `Host` header against `http://<ip>`; results from both waves are merged and deduplicated by virtual host name.
 
-If `--url` is given, that single URL is used instead and no automatic resolution happens.
+If `--url` is given, that single URL is used instead (wave 1 only) and no automatic resolution happens.
 
-**When does ffuf actually run?**
+**Which modes run ffuf?**
 
-| Mode | ffuf runs? | Target source |
+| Mode | ffuf runs? | Wave 2 target source |
 |------|-----------|---------------|
 | `passive` | No | — |
-| `active` | Yes (if wordlist provided) | Base domain IPs + active-enum subdomain IPs |
-| `all` | Yes (if wordlist provided) | Base domain IPs + passive subdomain IPs |
-
-Results are deduplicated: the same virtual host found across multiple IPs appears once.
+| `active` | Yes (if wordlist provided) | Active-enum (gobuster) subdomain IPs |
+| `all` | Yes (if wordlist provided) | Passive subdomain IPs |
 
 ### JSON output
 
@@ -340,7 +345,7 @@ subdomainenum/
 │       ├── subfinder.py     subfinder wrapper
 │       ├── findomain.py     findomain wrapper
 │       ├── assetfinder.py   assetfinder wrapper
-│       ├── dnsrecon.py      dnsrecon wrapper (std,srv + Bing/Yandex/crt.sh/SPF
+│       ├── dnsrecon.py      dnsrecon wrapper (std,srv + Bing/Yandex/SPF
 │       │                      + AXFR + DNSSEC zone walk; always passive)
 │       ├── gobuster_dns.py  gobuster dns wrapper (sole DNS brute-forcer)
 │       └── ffuf.py          ffuf vhost fuzzing wrapper
@@ -384,7 +389,7 @@ pytest tests/test_assessor.py -v
 pytest tests/test_cli.py::TestCheckCommand -v
 ```
 
-The test suite has **339 tests** and achieves **99% coverage** across all modules.
+The test suite has **343 tests** and achieves **99% coverage** across all modules.
 
 All DNS I/O (`dns.resolver.Resolver.resolve`), TLS
 sockets, and subprocess calls are mocked at the boundary — no test touches a real

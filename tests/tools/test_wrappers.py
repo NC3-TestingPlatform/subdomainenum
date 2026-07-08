@@ -209,8 +209,17 @@ class TestRunDnsrecon:
         with patch("subdomainenum.tools.dnsrecon.run_tool", return_value=([], False)) as mock:
             run_dnsrecon("example.com")
             cmd = mock.call_args[0][0]
-        for flag in ("-a", "-b", "-y", "-k", "-z", "-s"):
+        for flag in ("-a", "-b", "-y", "-z", "-s"):
             assert flag in cmd, f"expected {flag} in command"
+
+    def test_excludes_crtsh_flag(self) -> None:
+        """-k (crt.sh) is intentionally omitted: subfinder already covers
+        crt.sh, and dnsrecon's own crt.sh client has an unconfigurable,
+        aggressive retry policy that can stall on crt.sh outages."""
+        with patch("subdomainenum.tools.dnsrecon.run_tool", return_value=([], False)) as mock:
+            run_dnsrecon("example.com")
+            cmd = mock.call_args[0][0]
+        assert "-k" not in cmd
 
     def test_tool_missing_sets_available_false(self) -> None:
         with patch(

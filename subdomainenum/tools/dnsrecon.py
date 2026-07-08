@@ -18,6 +18,14 @@ _TYPES = "std,srv"
 # not used. AXFR (``-a``) and DNSSEC zone walk (``-z``) target the domain's
 # authoritative nameservers — public DNS infrastructure, not the target
 # application — so they are included in the passive invocation.
+#
+# crt.sh (``-k``) is intentionally omitted: subfinder already queries crt.sh
+# as one of its built-in sources (concurrently, in the same passive pool),
+# and dnsrecon's own crt.sh client hardcodes an aggressive retry policy
+# (20 attempts, up to 60s backoff between tries, no CLI override) that can
+# burn a large chunk of the passive phase's wall-clock whenever crt.sh
+# — a free, unauthenticated, frequently-overloaded service — returns
+# 502/503/429 or times out.
 
 # dnsrecon consults SHODAN_API_KEY as the fallback for --shodan-key. When the
 # env var is present we enable --shodan and --shodan-active during passive
@@ -38,9 +46,12 @@ def run_dnsrecon(
 ) -> ToolResult:
     """Run dnsrecon for *domain*.
 
-    Always uses ``-t std,srv`` with Bing (``-b``), Yandex (``-y``), crt.sh
-    (``-k``), SPF reverse lookup (``-s``), AXFR zone transfer (``-a``), and
-    DNSSEC zone walk (``-z``). AXFR and zone walk target the domain's
+    Always uses ``-t std,srv`` with Bing (``-b``), Yandex (``-y``), SPF
+    reverse lookup (``-s``), AXFR zone transfer (``-a``), and DNSSEC zone
+    walk (``-z``). crt.sh is intentionally not queried here — subfinder
+    already covers it as one of its built-in sources, and dnsrecon's own
+    crt.sh client has an unconfigurable, aggressive retry policy that can
+    stall on crt.sh outages. AXFR and zone walk target the domain's
     authoritative nameservers (public DNS infrastructure, not the target
     application), so they are treated as passive enumeration. When the
     ``SHODAN_API_KEY`` environment variable is set, ``--shodan`` and
@@ -63,7 +74,7 @@ def run_dnsrecon(
     if threads is not None:
         cmd += ["--threads", str(threads)]
 
-    cmd += ["-b", "-y", "-k", "-s", "-a", "-z"]  # Bing, Yandex, crt.sh, SPF, AXFR, DNSSEC zone walk
+    cmd += ["-b", "-y", "-s", "-a", "-z"]  # Bing, Yandex, SPF, AXFR, DNSSEC zone walk
     # Shodan enrichment is opt-in via env var; dnsrecon itself reads
     # SHODAN_API_KEY when --shodan-key is omitted, so we don't have to
     # forward the secret on the command line.
