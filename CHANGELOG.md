@@ -9,6 +9,10 @@ Version numbers follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ## [Unreleased]
 
+---
+
+## [0.14.4] — 2026-08-12
+
 ### Removed
 
 - `.tours/new-joiner-architecture.tour` — the checked-in CodeTour walkthrough.
@@ -24,6 +28,14 @@ Version numbers follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html
   line-number drift needed no tour update because "tours reference landmarks,
   not exact lines"; CodeTour `line` fields are exact, and that guidance is what
   allowed the anchors above to rot unnoticed. Added a validation snippet.
+- `pyproject.toml`: `license` is now the canonical SPDX expression
+  `GPL-3.0-only` instead of the deprecated `GPL-3.0` identifier. The license
+  itself is unchanged — only its machine-readable spelling.
+- `pyproject.toml`: the build requirement is now `setuptools>=77`, the first
+  release implementing PEP 639 (a string `license` holding an SPDX expression,
+  plus `license-files`). The previous `setuptools>=68` allowed versions that
+  reject a string `license` value, so a build in a clean environment could
+  resolve a setuptools too old to understand this metadata.
 
 ---
 
@@ -144,7 +156,8 @@ Version numbers follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ---
 
-[Unreleased]: https://github.com/NC3-TestingPlatform/subdomainenum/compare/v0.14.3...HEAD
+[Unreleased]: https://github.com/NC3-TestingPlatform/subdomainenum/compare/v0.14.4...HEAD
+[0.14.4]: https://github.com/NC3-TestingPlatform/subdomainenum/compare/v0.14.3...v0.14.4
 [0.14.3]: https://github.com/NC3-TestingPlatform/subdomainenum/compare/v0.14.2...v0.14.3
 [0.14.2]: https://github.com/NC3-TestingPlatform/subdomainenum/compare/v0.14.1...v0.14.2
 [0.14.1]: https://github.com/NC3-TestingPlatform/subdomainenum/compare/v0.14.0...v0.14.1
