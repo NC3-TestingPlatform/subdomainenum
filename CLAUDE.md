@@ -118,7 +118,8 @@ Environment variables for wordlist paths: `DEFAULT_DNS_WORDLIST`, `DEFAULT_VHOST
 - Sphinx-style docstrings: `:param name:`, `:returns:`, `:rtype:` (no `:type:` — type annotations on signatures are sufficient)
 - Conventional commits: `fix:`, `feat:`, `fix(scope):`, `refactor:`, `test:`, `docs:`
 - All external calls (subprocess, HTTP, TLS, DNS) are wrapped to never raise — errors captured in `ToolResult.error`
-- No CI config currently present
+- CI: `.github/workflows/ci.yml` runs `ruff check` and the full suite on
+  push and PR to `main`, across Python 3.11-3.13
 
 ## Before Every Commit
 
