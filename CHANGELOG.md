@@ -10,6 +10,7 @@ Version numbers follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 ## [Unreleased]
 
 ### Removed
+
 - `.tours/new-joiner-architecture.tour` — the checked-in CodeTour walkthrough.
   Eleven of its thirteen file anchors pointed at unrelated lines (`assess()` had
   moved from line 222 to 463; `_run_passive` had been renamed `_run_passive_enum`
@@ -18,6 +19,7 @@ Version numbers follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html
   now maintained locally rather than in the repo.
 
 ### Changed
+
 - `CLAUDE.md` — corrected the Code Tours guidance. It previously stated that
   line-number drift needed no tour update because "tours reference landmarks,
   not exact lines"; CodeTour `line` fields are exact, and that guidance is what

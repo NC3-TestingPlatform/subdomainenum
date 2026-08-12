@@ -172,15 +172,31 @@ anchors on must re-anchor it. Validate before committing:
 
 ```bash
 python3 - <<'EOF'
-import json, os, glob
-for tour in glob.glob(".tours/*.tour"):
-    for i, s in enumerate(json.load(open(tour))["steps"], 1):
-        if "file" not in s or "line" not in s:
+import glob
+import json
+import os
+
+for tour in sorted(glob.glob(".tours/*.tour")):
+    for i, step in enumerate(json.load(open(tour))["steps"], 1):
+        if "file" not in step or "line" not in step:
             continue
-        lines = open(s["file"], encoding="utf-8").read().splitlines()
-        mark = "ok " if 1 <= s["line"] <= len(lines) else "BAD"
-        print(f'{mark} {tour} step {i:2} {s["file"]}:{s["line"]} | '
-              f'{lines[s["line"]-1].strip()[:60]}')
+        path, line = step["file"], step["line"]
+        valid, source = False, ""
+        if not os.path.isfile(path):
+            source = "file does not exist"
+        else:
+            lines = open(path, encoding="utf-8").read().splitlines()
+            # Guard before indexing: line 0 would negative-index to the last
+            # line and print it as though it were the anchor, and a line past
+            # the end would raise IndexError — so a broken anchor would either
+            # lie or crash the run it exists to diagnose.
+            valid = 1 <= line <= len(lines)
+            source = (
+                lines[line - 1].strip()[:60]
+                if valid
+                else f"out of range, file has {len(lines)} lines"
+            )
+        print(f"{'ok ' if valid else 'BAD'} {tour} step {i:2} {path}:{line} | {source}")
 EOF
 ```
 
