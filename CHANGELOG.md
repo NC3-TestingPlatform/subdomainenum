@@ -9,6 +9,10 @@ Version numbers follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ## [Unreleased]
 
+---
+
+## [0.14.4] — 2026-08-12
+
 ### Removed
 
 - `.tours/new-joiner-architecture.tour` — the checked-in CodeTour walkthrough.
@@ -24,12 +28,6 @@ Version numbers follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html
   line-number drift needed no tour update because "tours reference landmarks,
   not exact lines"; CodeTour `line` fields are exact, and that guidance is what
   allowed the anchors above to rot unnoticed. Added a validation snippet.
-
----
-
-## [0.14.4] — 2026-08-12
-
-### Changed
 - `pyproject.toml`: `license` is now the canonical SPDX expression
   `GPL-3.0-only` instead of the deprecated `GPL-3.0` identifier. The license
   itself is unchanged — only its machine-readable spelling.
