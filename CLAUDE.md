@@ -145,7 +145,12 @@ section and update the comparison links at the bottom of `CHANGELOG.md`.
 
 ## Code Tours
 
-The `.tours/` directory contains CodeTour walkthroughs (VS Code / JetBrains extension). Tours are checked into the repo and should stay accurate.
+CodeTour walkthroughs (VS Code / JetBrains extension) live in `.tours/`. **No
+tour is currently checked into this repo** — the one that was, `new-joiner-architecture.tour`,
+was removed on 2026-08-12 after its anchors rotted (see below). Tours are kept
+locally by whoever maintains them.
+
+If you add one back, the rules below apply.
 
 **When to update a tour:**
 - Adding or removing a passive or active source
@@ -156,11 +161,49 @@ The `.tours/` directory contains CodeTour walkthroughs (VS Code / JetBrains exte
 
 **When you do NOT need to update a tour:**
 - Bug fixes or internal refactors that don't move key anchors
-- Line-number drift of a few lines (tours reference landmarks, not exact lines)
 - New tests or documentation that don't affect the runtime call graph
 
-Current tours:
-- `.tours/new-joiner-architecture.tour` — end-to-end request lifecycle for new contributors
+**Line drift is NOT exempt.** CodeTour `line` fields are exact line numbers, not
+landmarks — a step whose anchor moved by even one line opens on the wrong code,
+silently and with a confident-looking title. The previous guidance here said
+drift was tolerable, and by 2026-08-12 eleven of thirteen anchors in the
+original tour pointed at unrelated lines. Any commit that shifts a line a tour
+anchors on must re-anchor it. Validate before committing:
+
+```bash
+python3 - <<'EOF'
+import glob
+import json
+import os
+
+for tour in sorted(glob.glob(".tours/*.tour")):
+    for i, step in enumerate(json.load(open(tour))["steps"], 1):
+        if "file" not in step or "line" not in step:
+            continue
+        path, line = step["file"], step["line"]
+        valid, source = False, ""
+        if not os.path.isfile(path):
+            source = "file does not exist"
+        else:
+            lines = open(path, encoding="utf-8").read().splitlines()
+            # Guard before indexing: line 0 would negative-index to the last
+            # line and print it as though it were the anchor, and a line past
+            # the end would raise IndexError — so a broken anchor would either
+            # lie or crash the run it exists to diagnose.
+            valid = 1 <= line <= len(lines)
+            source = (
+                lines[line - 1].strip()[:60]
+                if valid
+                else f"out of range, file has {len(lines)} lines"
+            )
+        print(f"{'ok ' if valid else 'BAD'} {tour} step {i:2} {path}:{line} | {source}")
+EOF
+```
+
+In-range is necessary but not sufficient — read the printed source line and
+confirm it is still what the step's title claims.
+
+Current tours: none in this repo.
 
 ## Version Bumping
 
